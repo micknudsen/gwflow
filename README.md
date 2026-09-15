@@ -30,3 +30,9 @@ They do not submit Slurm jobs or download container images.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, pull-request, and manual
 testing workflow.
+
+## Inspect a Phase 1 plan
+
+See [the planning guide](docs/phase1-planning.md) for the Python definition API,
+local setup, and runnable examples. Plans describe intended work; they do not
+establish completion or reuse.

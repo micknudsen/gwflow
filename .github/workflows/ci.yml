@@ -32,5 +32,5 @@ jobs:
           cache-environment: true
 
       - name: Run tests
-        run: python -m pytest -q experiments/phase0
+        run: python -m pytest -q experiments/phase0 tests
         shell: micromamba-shell {0}
