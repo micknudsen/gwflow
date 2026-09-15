@@ -1,0 +1,9 @@
+# Development-only feasibility environment; gwflow does not create tool environments.
+channels:
+  - gwforg
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - gwf=2.1.1
+  - pytest

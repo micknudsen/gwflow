@@ -209,6 +209,16 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# gwflow runtime state and local feasibility evidence
+.gwf/
+.gwflow/
+docs/evidence/
+docs/codex-handoff.md
+docs/server-development.md
+experiments/phase0/live_*.py
+!experiments/phase0/live_target_envelope.py
+experiments/phase0/*.out
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
