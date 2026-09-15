@@ -19,7 +19,7 @@ as granular as useful because they will not be preserved on `master`.
 ## Current test command
 
 ```sh
-conda run --prefix .venv python -m pytest -q experiments/phase0
+conda run --prefix .venv python -m pytest -q experiments/phase0 tests
 ```
 
 Create `.venv` first if necessary:
