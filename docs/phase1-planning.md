@@ -104,3 +104,40 @@ conda run --prefix .venv python -m gwflow plan examples.small_data:revised --pro
 
 The first two retain threshold 5 with different dataset identities. The third
 exits 2; the fourth selects version 2 with threshold 10 and a new identity.
+
+## Composition and explicit exports
+
+Use `MainPipeline(name, version, uses={"sample_a": Use(definition,
+{"source": "a.txt"}), ...})` for composition. Occurrence names are unique,
+nonempty strings in a mapping; ordering is incidental. `plan` accepts optional
+binding overrides nested by occurrence; CLI `--bindings` uses the same shape.
+The one-subpipeline shorthand continues to use flat named bindings.
+
+Select a concrete `Subpipeline`, or `DefinitionRef("module:export",
+"package.definition", "explicit-version")`. References check both exported name
+and version before planning; missing exports and mismatches fail. Ordinary
+installed/editable imports are used without an online registry. Development
+versions (for example `1.dev1`) are opaque explicit versions too: revise them
+when changing computation. Package versions are separate provenance.
+
+Equivalent occurrences share one computation and result slot, with their names
+listed in `occurrences`; `main.occurrences` records each selection and package
+provenance. Within a plan, one published name/version must have equal declared
+input/output interfaces and parameters, and the same builder callable. Repeated
+identical bindings must compile to the same targets. This conservative visible
+conflict check requires authors to export a shared builder rather than create
+fresh wrapper functions for equivalent definitions. It does not inspect hidden
+scripts, compare installed software, or detect mutations across saved plans.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.composition:main --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.composition:main_only --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.composition:report_changed --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.composition:repeated --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.composition:unavailable --project /tmp/gwflow-demo
+```
+
+The first plans two datasets and independent reporting. Main-only changes
+preserve all identities; reporting changes preserve both dataset identities.
+The repeated case shows four occurrences sharing three computations. The last
+exits 2 explaining the unavailable requested version 99.
