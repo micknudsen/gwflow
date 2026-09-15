@@ -33,3 +33,24 @@ environment with pip and setuptools. The bundled `examples.one_file` module is
 then importable from other working directories; edit it and re-run the command.
 No environment solving or registry is part of the planner. Conda release
 packaging and execution remain later-phase work.
+
+## Deterministic addresses
+
+The [identity contract](adr/0005-descriptor-addressing.md) specifies exact
+canonicalization, qualified names, lexical paths, and current result slots.
+The plan exposes `identity`, `descriptor`, `work_dir`, and `result_dir`.
+Run `conda run --prefix .venv python -m examples.identity_demo`: original,
+repeat and main-version lines have identical addresses; new-binding and
+sub-version lines differ. No files are needed.
+
+To demonstrate in-place input changes without changing identity:
+
+```sh
+mkdir -p /tmp/gwflow-demo
+printf first > /tmp/gwflow-demo/reads.txt
+conda run --prefix .venv python -m examples.identity_demo
+printf 'changed contents' > /tmp/gwflow-demo/reads.txt
+conda run --prefix .venv python -m examples.identity_demo
+```
+
+The two runs agree: identity is distinct from later freshness evaluation.

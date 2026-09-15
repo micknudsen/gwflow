@@ -74,6 +74,7 @@ def _named(value, label):
 def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     """Plan without reading input payloads, checking existence, or creating files."""
     from . import __version__
+    from .identity import address, file_binding
     if not isinstance(main, MainPipeline) or not isinstance(main.subpipeline, Subpipeline):
         raise PlanError("main pipeline must select a Subpipeline")
     sub = main.subpipeline
@@ -86,14 +87,15 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     if missing or unknown:
         raise PlanError(f"{sub.name}: missing bindings {sorted(missing)}; unknown bindings {sorted(unknown)}")
     root = os.path.abspath(os.fspath(project))
-    resolved = {}
+    resolved, descriptors = {}, {}
     for name, kind in sub.inputs.items():
         value = bindings[name]
         if kind != "file" or not isinstance(value, (str, Path)) or not str(value):
             raise PlanError(f"{sub.name} binding {name!r}: expected file path, got {value!r} (kind {kind!r})")
-        resolved[name] = os.path.abspath(os.path.join(root, str(value)))
-    ctx = Context(resolved, os.path.join(root, "work", "planned"),
-                  os.path.join(root, "results", "planned"), sub.outputs)
+        resolved[name], descriptors[name] = file_binding(value, root, f"{sub.name} binding {name!r}")
+    identity, descriptor = address(sub.name, sub.version, descriptors)
+    ctx = Context(resolved, os.path.join(root, "work", identity[:2], identity),
+                  os.path.join(root, "results", identity[:2], identity), sub.outputs)
     retained = {name: ctx.path(path) for name, path in sub.outputs.items()}
     try:
         targets = list(sub.build(ctx))
@@ -115,6 +117,8 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
         "main": {"name": main.name, "version": main.version, "package": dict(main.package)},
         "software": {"gwflow": __version__, "gwf": gwf_version},
         "computations": [{
+            "identity": identity, "descriptor": descriptor,
+            "work_dir": ctx.work_dir, "result_dir": ctx.result_dir,
             "definition": {"name": sub.name, "version": sub.version, "package": dict(sub.package)},
             "input_interface": dict(sub.inputs), "bindings": resolved,
             "retained_outputs": retained,
