@@ -14,10 +14,10 @@ provenance, the named input, command, and retained `copy` output. The others
 exit 2 with a missing-binding or import diagnostic. Success exits 0.
 
 `Subpipeline(name, version, inputs, outputs, build, package=...)` declares the
-versioned interface. Inputs currently use `"file"`; outputs map public names to
+versioned interface. Inputs use `"file"`, `"files"`, or `"data"`; outputs map public names to
 relative filenames. The builder receives a `Context`: `inputs` contains bound
-paths, and `path(relative)` locates generated files. Return a list containing a
-`Target(name, command, inputs=..., outputs=...)`. A `MainPipeline` selects the
+paths, and `path(relative)` locates generated files. Return a finite list of
+`Target(name, command, inputs=..., outputs=...)` declarations. A `MainPipeline` selects the
 subpipeline. `plan(main, bindings, project=...)` returns an inspectable dictionary.
 
 Files are not required to exist: planning does not inspect external inputs or
@@ -279,3 +279,81 @@ demo. `manifest(plan_result, identity)` exports one detached record;
 `--format manifests` emits all computation manifests as a JSON array on stdout.
 No project metadata is automatically persisted, and a valid manifest is not
 completion evidence.
+
+## Identity facts and prospective reuse
+
+Every computation's `explanation` separates identity facts, constraints, and
+prospective runtime conditions. The stable machine-readable `code` vocabulary is:
+
+| Group | Codes and meaning |
+| --- | --- |
+| `identity_facts` | `definition-identity`, `named-binding-identity`, `upstream-identity`: the version, typed bindings and connected producer facts determining identity. |
+| `identity_facts` | `provenance-only-versions`: main/software/package versions do not salt identity. `current-result-slot`: the planned address is not proof of completion. |
+| `constraints` | `whole-producer-completion`: producer membership remains separate from file inputs. `outputless-always-run`: present when outputless targets prevent metadata-created cacheability. |
+| `prospective_reuse.conditions` | `required-completion-evidence`, `retained-output-validity`, `target-level-freshness`, `available-scheduler-state`: each has `evaluation: not evaluated`. |
+
+Prospective reuse always has `outcome: undetermined` in Phase 1. The recovery
+explanation describes a conditional later evaluation, never established failed
+work or a selection of jobs to submit. Descriptive wording may evolve; codes,
+basis facts and evaluation limits are the public semantic contract. No baseline
+plan comparison service or runtime evaluator is introduced. Schema-1 manifests
+retain their unevaluated-runtime field; these derived display explanations are
+not added to the required manifest schema.
+
+```sh
+conda run --prefix .venv python -m examples.explanations
+conda run --prefix .venv python -m gwflow plan examples.explanations:main --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.explanations:main_changed --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.explanations:upstream_changed --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.explanations:outputless --project /tmp/gwflow-demo --bindings '{"source":"reads.txt"}'
+```
+
+Main-only changes preserve identities; upstream changes propagate through the
+consumer/report chain and preserve the independent branch. All examples list
+the four unevaluated conditions. The outputless example adds its always-run
+constraint.
+
+To deliberately prepare surviving fixture payloads and a saved planning record,
+then demonstrate that planning still makes no completion claim:
+
+```sh
+.venv/bin/python - <<'PY'
+import json
+from pathlib import Path
+from gwflow import manifest, plan
+from examples.explanations import main
+root = Path('/tmp/gwflow-explanation-demo')
+result = plan(main, project=root)
+for comp in result['computations']:
+    for value in comp['retained_outputs'].values():
+        path = Path(value)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('surviving fixture payload')
+    (root / (comp['identity'] + '.json')).write_text(json.dumps(manifest(result, comp['identity'])))
+assert plan(main, project=root) == result
+print([c['explanation']['prospective_reuse']['outcome'] for c in result['computations']])
+PY
+```
+
+The output is four `undetermined` values. File creation above is explicit fixture
+setup by the example, not a planner side effect.
+
+## Phase 1 behavioral coverage
+
+The required command in [Contributing](../CONTRIBUTING.md) runs maintained public
+planner/command tests alongside the Phase 0 probes. Parent #3 acceptance is
+covered by these test modules:
+
+| Acceptance | Public behavior tests |
+| --- | --- |
+| P1-01–03 | `test_planner`, `test_identity`, `test_composition` |
+| P1-04–05 | `test_connections`, `test_small_data`, `test_explanations` |
+| P1-06–07 | `test_file_lists`, `test_small_data`, `test_resources`, `test_identity` |
+| P1-08 | `test_connections` |
+| P1-09–10 | `test_internal_graph`, `test_whole_producer`, binding/composition diagnostic tests |
+| P1-11 | `test_environments` |
+| P1-12 | `test_manifests` |
+| P1-13–14 | `test_explanations`, `test_manifests`, command smoke cases across the above modules |
+
+These tests establish planning behavior only. They do not qualify a runnable
+release or substitute for the later Slurm/Apptainer execution and reuse gates.

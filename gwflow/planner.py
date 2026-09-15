@@ -253,10 +253,13 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
         gwf_version = version("gwf")
     except PackageNotFoundError:
         gwf_version = None
-    return {
+    result = {
         "kind": "plan", "project": root,
         "main": {"name": main.name, "version": main.version, "package": dict(main.package), "occurrences": occurrences},
         "software": {"gwflow": __version__, "gwf": gwf_version},
         "computations": ordered, "composition_edges": composition_edges,
         "runtime_evaluation": "not evaluated", "external_input_existence": "not evaluated",
     }
+    from .explanations import explain
+    explain(result)
+    return result
