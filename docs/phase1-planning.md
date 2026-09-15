@@ -269,3 +269,13 @@ conda run --prefix .venv python -m gwflow plan examples.target_images:revised --
 
 The first shows local SIF, registry and host targets without installed images.
 The second changes one registry declaration under version 2 and has a new identity.
+
+## Versioned manifests
+
+See the [schema 1 contract](manifest-schema.md) for required fields, types,
+interpretation revisions, validation, JSON round trips, and a mixed-feature
+demo. `manifest(plan_result, identity)` exports one detached record;
+`validate_manifest(record)` checks it without execution. The CLI's
+`--format manifests` emits all computation manifests as a JSON array on stdout.
+No project metadata is automatically persisted, and a valid manifest is not
+completion evidence.

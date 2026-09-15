@@ -2,7 +2,7 @@
 import argparse
 import json
 import sys
-from . import PlanError, load, plan
+from . import PlanError, load, manifest, plan
 
 
 def main(argv=None):
@@ -13,9 +13,12 @@ def main(argv=None):
     command.add_argument("--project", required=True)
     command.add_argument("--bindings", default="{}", help="JSON object of named input bindings")
     command.add_argument("--resources", default="{}", help="JSON occurrence/target operational overrides")
+    command.add_argument("--format", choices=("plan", "manifests"), default="plan")
     args = parser.parse_args(argv)
     try:
         result = plan(load(args.definition), json.loads(args.bindings), project=args.project, resources=json.loads(args.resources))
+        if args.format == "manifests":
+            result = [manifest(result, c["identity"]) for c in result["computations"]]
     except (PlanError, json.JSONDecodeError) as exc:
         print(f"gwflow: {exc}", file=sys.stderr)
         return 2
