@@ -225,3 +225,23 @@ Revising the producer changes producer, consumer and report identities; the
 independent branch stays unchanged. `private` exits 2 because `a` is not a public
 retained name. `exposed` declares `a` under producer version 3 and succeeds.
 No output bytes or execution evidence are inspected.
+
+## Whole-producer obligations
+
+`completion_obligations` expands each required producer identity into its
+`required_targets` and `terminal_targets`. Its condition is whole-subpipeline
+completion and its evaluation is explicitly `not evaluated`. All internal work
+is required, including independent branches whose files this consumer never
+reads. Target inputs and computational edges retain only actual file
+consumption. Scheduler enforcement remains a later execution-adapter concern.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.whole_producer:main --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.whole_producer:multiple --project /tmp/gwflow-demo
+```
+
+The first plan has exactly three targets: producer fast/slow and consumer copy.
+Copy reads one fast file, but its obligation lists both fast and slow terminals.
+The second adds a fork/join producer; the consumer reads two files and has two
+whole-producer obligations, including all four fork/join targets and terminal d.
+No unrelated freshness inputs, synthetic targets, attempts, or jobs are added.
