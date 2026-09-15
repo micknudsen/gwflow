@@ -21,7 +21,7 @@ class Target:
 
 @dataclass(frozen=True)
 class Context:
-    inputs: Mapping[str, str]
+    inputs: Mapping[str, object]
     work_dir: str
     result_dir: str
     retained: Mapping[str, str]
@@ -90,9 +90,17 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     resolved, descriptors = {}, {}
     for name, kind in sub.inputs.items():
         value = bindings[name]
-        if kind != "file" or not isinstance(value, (str, Path)) or not str(value):
-            raise PlanError(f"{sub.name} binding {name!r}: expected file path, got {value!r} (kind {kind!r})")
-        resolved[name], descriptors[name] = file_binding(value, root, f"{sub.name} binding {name!r}")
+        label = f"{sub.name} binding {name!r}"
+        if kind == "file":
+            resolved[name], descriptors[name] = file_binding(value, root, label)
+        elif kind == "files":
+            if not isinstance(value, (list, tuple)):
+                raise PlanError(f"{label}: expected finite file list, got {value!r}")
+            items = [file_binding(item, root, f"{label} element {i}") for i, item in enumerate(value)]
+            resolved[name] = [path for path, _ in items]
+            descriptors[name] = {"kind": "files", "items": [desc for _, desc in items]}
+        else:
+            raise PlanError(f"{label}: unsupported input kind {kind!r}")
     identity, descriptor = address(sub.name, sub.version, descriptors)
     ctx = Context(resolved, os.path.join(root, "work", identity[:2], identity),
                   os.path.join(root, "results", identity[:2], identity), sub.outputs)
