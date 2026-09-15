@@ -25,6 +25,7 @@ class Context:
     work_dir: str
     result_dir: str
     retained: Mapping[str, str]
+    parameters: Mapping[str, object] = field(default_factory=dict)
 
     def path(self, relative: str) -> str:
         """Locate a declared output (retained files go in the result slot)."""
@@ -42,6 +43,7 @@ class Subpipeline:
     outputs: Mapping[str, str]
     build: Callable[[Context], list[Target]]
     package: Mapping[str, str] = field(default_factory=dict)
+    parameters: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,7 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     """Plan without reading input payloads, checking existence, or creating files."""
     from . import __version__
     from .identity import address, file_binding
+    from .data import small_data
     if not isinstance(main, MainPipeline) or not isinstance(main.subpipeline, Subpipeline):
         raise PlanError("main pipeline must select a Subpipeline")
     sub = main.subpipeline
@@ -86,6 +89,9 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     missing, unknown = set(sub.inputs) - set(bindings), set(bindings) - set(sub.inputs)
     if missing or unknown:
         raise PlanError(f"{sub.name}: missing bindings {sorted(missing)}; unknown bindings {sorted(unknown)}")
+    if not isinstance(sub.parameters, Mapping) or set(sub.parameters) & set(sub.inputs):
+        raise PlanError(f"{sub.name}: computational parameters must be a mapping separate from input names")
+    parameters = small_data(dict(sub.parameters), f"{sub.name} computational parameters")
     root = os.path.abspath(os.fspath(project))
     resolved, descriptors = {}, {}
     for name, kind in sub.inputs.items():
@@ -99,11 +105,15 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
             items = [file_binding(item, root, f"{label} element {i}") for i, item in enumerate(value)]
             resolved[name] = [path for path, _ in items]
             descriptors[name] = {"kind": "files", "items": [desc for _, desc in items]}
+        elif kind == "data":
+            resolved[name] = small_data(value, label)
+            descriptors[name] = {"kind": "data", "value": small_data(value, label)}
         else:
             raise PlanError(f"{label}: unsupported input kind {kind!r}")
     identity, descriptor = address(sub.name, sub.version, descriptors)
     ctx = Context(resolved, os.path.join(root, "work", identity[:2], identity),
-                  os.path.join(root, "results", identity[:2], identity), sub.outputs)
+                  os.path.join(root, "results", identity[:2], identity), sub.outputs,
+                  small_data(parameters, f"{sub.name} computational parameters"))
     retained = {name: ctx.path(path) for name, path in sub.outputs.items()}
     try:
         targets = list(sub.build(ctx))
@@ -129,6 +139,7 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
             "work_dir": ctx.work_dir, "result_dir": ctx.result_dir,
             "definition": {"name": sub.name, "version": sub.version, "package": dict(sub.package)},
             "input_interface": dict(sub.inputs), "bindings": resolved,
+            "computational_parameters": parameters,
             "retained_outputs": retained,
             "targets": [{"name": target.name, "command": target.command,
                          "inputs": list(target.inputs), "outputs": list(target.outputs)}],

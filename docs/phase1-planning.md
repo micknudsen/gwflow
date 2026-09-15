@@ -76,3 +76,31 @@ conda run --prefix .venv python -m gwflow plan examples.file_list:main --project
 Repeating a command keeps identity; reordering, replacing, adding, removing or
 duplicating a file changes it. The last command exits 2 naming `reads` element 1.
 The entire list is known during planning; this adds no runtime discovery.
+
+## Small data and fixed computational parameters
+
+Declare input kind `"data"`. Values are JSON null, booleans, strings, integers
+from `-(2**53-1)` to `2**53-1`, finite floats, lists, or dictionaries with string
+keys. Subclasses and non-JSON Python objects are unsupported. Nesting is limited
+to depth 16 (root depth 0), and each value's canonical ASCII JSON is at most
+16384 bytes. Cyclic values exceed the depth limit. Object key order is
+irrelevant; list order/duplicates matter. Null, bool, int, float and string
+remain distinct; `1` differs from `1.0`, and `0.0` differs from `-0.0`.
+Strings preserve code points. The descriptor is `{"kind":"data","value":...}`.
+Planning copies values and does not treat strings inside data as file paths.
+
+`Subpipeline(..., parameters={"threshold": 5})` fixes computational parameters
+under its version. Builders read `ctx.parameters`; the plan displays
+`computational_parameters` separately from `bindings`. Parameters use the same
+bounded JSON contract, and their names cannot overlap inputs. Changing a
+parameter requires a new definition version. Input bindings cannot override it.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.small_data:main --project /tmp/gwflow-demo --bindings '{"sample":"A"}'
+conda run --prefix .venv python -m gwflow plan examples.small_data:main --project /tmp/gwflow-demo --bindings '{"sample":"B"}'
+conda run --prefix .venv python -m gwflow plan examples.small_data:main --project /tmp/gwflow-demo --bindings '{"sample":"A","threshold":10}'
+conda run --prefix .venv python -m gwflow plan examples.small_data:revised --project /tmp/gwflow-demo --bindings '{"sample":"A"}'
+```
+
+The first two retain threshold 5 with different dataset identities. The third
+exits 2; the fourth selects version 2 with threshold 10 and a new identity.
