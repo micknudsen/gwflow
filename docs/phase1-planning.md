@@ -166,3 +166,36 @@ conda run --prefix .venv python -m gwflow plan examples.resources:main --project
 
 The first two have identical identities/result locations and different requests.
 The third exits 2: command changes are not operational overrides.
+
+## Complete internal graphs
+
+Builders return all targets as a finite list. Targets have unique nonempty
+names within their computation. File inputs infer edges from the target
+producing the same normalized path. `depends_on=("target", ...)` adds explicit
+computational predecessor references without inventing file inputs. Both kinds
+participate in cycle validation; these are not scheduler-only completion edges.
+
+Use `ctx.path(relative)` for generated paths. Retained names map to normalized
+relative files in the result slot; other files go in work. Target paths may be
+absolute or relative to work. Outputs must be contained in owned work/result
+paths, with one producer per file and no file/parent collisions. Retained names
+must identify distinct files with target producers. An unproduced input inside
+owned paths is invalid; producerless external files remain unobserved.
+Validation uses lexical paths and does not inspect generated files or symlinks.
+
+Plans expose target `computation` membership, `dependencies`, file/explicit
+`computational_edges`, `entry_targets`, `terminal_targets`, `internal_outputs`,
+and per-target `output_kinds`. Outputless targets have `always_run: true`;
+metadata does not make them cacheable. Parallel terminals need no synthetic join.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.internal_graph:main --project /tmp/gwflow-demo --bindings '{"source":"x"}'
+conda run --prefix .venv python -m gwflow plan examples.internal_graph:parallel_main --project /tmp/gwflow-demo --bindings '{"source":"x"}'
+conda run --prefix .venv python -m gwflow plan examples.internal_graph:cycle --project /tmp/gwflow-demo --bindings '{"source":"x"}'
+conda run --prefix .venv python -m gwflow plan examples.internal_graph:duplicate --project /tmp/gwflow-demo --bindings '{"source":"x"}'
+conda run --prefix .venv python -m gwflow plan examples.internal_graph:always --project /tmp/gwflow-demo --bindings '{"source":"x"}'
+```
+
+The first exposes a fork/join; the second has fast/slow terminals. The next two
+exit 2 naming a cycle or ambiguous producer. The last shows one outputless
+always-run target. No target is executed and no runtime jobs are discovered.
