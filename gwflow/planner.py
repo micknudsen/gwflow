@@ -17,6 +17,7 @@ class Target:
     command: str
     inputs: tuple[str, ...] = ()
     outputs: tuple[str, ...] = ()
+    resources: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,8 @@ def _named(value, label):
         raise PlanError(f"{label} must be a nonempty string")
 
 
-def _compile(sub, bindings, root):
+def _compile(sub, bindings, root, resource_overrides=None):
+    from .resources import resources
     from .identity import address, file_binding
     from .data import small_data
     for label, value in [("subpipeline name", sub.name), ("subpipeline version", sub.version)]:
@@ -136,6 +138,11 @@ def _compile(sub, bindings, root):
         raise PlanError(f"{sub.name}: this planning slice requires one Target")
     target = targets[0]
     _named(target.name, f"{sub.name} target name")
+    overrides = {} if resource_overrides is None else resource_overrides
+    if not isinstance(overrides, Mapping) or set(overrides) - {target.name}:
+        raise PlanError(f"{sub.name}: resource overrides must name existing targets")
+    requested = resources(target.resources, f"{sub.name}/{target.name}")
+    requested.update(resources(overrides.get(target.name, {}), f"{sub.name}/{target.name}"))
     _named(target.command, f"{sub.name}/{target.name} command")
     if not set(retained.values()) <= set(target.outputs):
         raise PlanError(f"{sub.name}: retained outputs must be produced by its target")
@@ -147,11 +154,11 @@ def _compile(sub, bindings, root):
             "computational_parameters": parameters,
             "retained_outputs": retained,
             "targets": [{"name": target.name, "command": target.command,
-                         "inputs": list(target.inputs), "outputs": list(target.outputs)}],
+                         "inputs": list(target.inputs), "outputs": list(target.outputs), "resources": requested}],
     }
 
 
-def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | Path) -> dict:
+def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | Path, resources: Mapping | None = None) -> dict:
     """Plan one explicitly selected project without observing runtime state."""
     from . import __version__
     from .data import small_data
@@ -182,6 +189,9 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
             if not isinstance(overrides, Mapping):
                 raise PlanError(f"occurrence {name!r}: bindings must be a mapping")
             uses[name] = Use(use.definition, {**use.bindings, **overrides})
+    resources = {} if resources is None else resources
+    if not isinstance(resources, Mapping) or set(resources) - set(uses):
+        raise PlanError(f"{main.name}: resource overrides must name existing occurrences")
     definitions, computations, occurrences = {}, {}, {}
     for name, use in sorted(uses.items()):
         sub = use.definition
@@ -197,10 +207,12 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
         if key in definitions and definitions[key] != visible:
             raise PlanError(f"occurrence {name!r}: conflicting immutable definition {sub.name}@{sub.version}")
         definitions[key] = visible
-        comp = _compile(sub, use.bindings, root)
+        comp = _compile(sub, use.bindings, root, resources.get(name, {}))
         identity = comp["identity"]
         if identity in computations:
             previous = computations[identity]
+            if [t["resources"] for t in previous["targets"]] != [t["resources"] for t in comp["targets"]]:
+                raise PlanError(f"occurrence {name!r}: conflicting resources for equivalent computation")
             if previous["targets"] != comp["targets"]:
                 raise PlanError(f"occurrence {name!r}: conflicting compiled definition {sub.name}@{sub.version}")
             previous["occurrences"].append(name)
