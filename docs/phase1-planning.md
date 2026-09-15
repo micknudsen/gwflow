@@ -54,3 +54,25 @@ conda run --prefix .venv python -m examples.identity_demo
 ```
 
 The two runs agree: identity is distinct from later freshness evaluation.
+
+## Finite file lists
+
+Declare `"files"` and bind a Python list or tuple (a JSON array in the CLI).
+Order and duplicates are significant; list and tuple with the same elements
+are equivalent. Empty lists are allowed and are still required named bindings.
+Every element follows the single-file path policy. Generators and scalar
+paths are rejected. Diagnostics use zero-based element indices. Builders see
+a list of normalized absolute paths; the descriptor uses `kind: files` and an
+ordered `items` array of file descriptors. This additive form uses identity
+revision 1 and leaves existing file descriptors unchanged.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.file_list:main --project /tmp/gwflow-demo --bindings '{"reads":["a","b"]}'
+conda run --prefix .venv python -m gwflow plan examples.file_list:main --project /tmp/gwflow-demo --bindings '{"reads":["b","a"]}'
+conda run --prefix .venv python -m gwflow plan examples.file_list:main --project /tmp/gwflow-demo --bindings '{"reads":["a","b","b"]}'
+conda run --prefix .venv python -m gwflow plan examples.file_list:main --project /tmp/gwflow-demo --bindings '{"reads":["a",7]}'
+```
+
+Repeating a command keeps identity; reordering, replacing, adding, removing or
+duplicating a file changes it. The last command exits 2 naming `reads` element 1.
+The entire list is known during planning; this adds no runtime discovery.
