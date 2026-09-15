@@ -47,22 +47,42 @@ class Subpipeline:
 
 
 @dataclass(frozen=True)
+class DefinitionRef:
+    selector: str
+    name: str
+    version: str
+
+
+@dataclass(frozen=True)
+class Use:
+    definition: Subpipeline | DefinitionRef
+    bindings: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class MainPipeline:
     name: str
     version: str
-    subpipeline: Subpipeline
+    subpipeline: Subpipeline | None = None
     package: Mapping[str, str] = field(default_factory=dict)
+    uses: Mapping[str, Use] = field(default_factory=dict)
 
 
-def load(selector: str) -> MainPipeline:
-    """Load an exported main pipeline using module:attribute."""
+def _load_export(selector):
+    if not isinstance(selector, str):
+        raise PlanError("definition selector must be a string")
     module, sep, entry = selector.partition(":")
     if not sep or not module or not entry:
         raise PlanError(f"definition selector {selector!r}: expected module:attribute")
     try:
-        obj = getattr(importlib.import_module(module), entry)
+        return getattr(importlib.import_module(module), entry)
     except Exception as exc:
         raise PlanError(f"cannot load definition {selector!r}: {exc}") from exc
+
+
+def load(selector: str) -> MainPipeline:
+    """Load an exported main pipeline using module:attribute."""
+    obj = _load_export(selector)
     if not isinstance(obj, MainPipeline):
         raise PlanError(f"definition {selector!r} must export a MainPipeline")
     return obj
@@ -73,16 +93,10 @@ def _named(value, label):
         raise PlanError(f"{label} must be a nonempty string")
 
 
-def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
-    """Plan without reading input payloads, checking existence, or creating files."""
-    from . import __version__
+def _compile(sub, bindings, root):
     from .identity import address, file_binding
     from .data import small_data
-    if not isinstance(main, MainPipeline) or not isinstance(main.subpipeline, Subpipeline):
-        raise PlanError("main pipeline must select a Subpipeline")
-    sub = main.subpipeline
-    for label, value in [("main name", main.name), ("main version", main.version),
-                         ("subpipeline name", sub.name), ("subpipeline version", sub.version)]:
+    for label, value in [("subpipeline name", sub.name), ("subpipeline version", sub.version)]:
         _named(value, label)
     if not isinstance(bindings, Mapping):
         raise PlanError(f"{sub.name}: bindings must be a mapping")
@@ -92,7 +106,6 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     if not isinstance(sub.parameters, Mapping) or set(sub.parameters) & set(sub.inputs):
         raise PlanError(f"{sub.name}: computational parameters must be a mapping separate from input names")
     parameters = small_data(dict(sub.parameters), f"{sub.name} computational parameters")
-    root = os.path.abspath(os.fspath(project))
     resolved, descriptors = {}, {}
     for name, kind in sub.inputs.items():
         value = bindings[name]
@@ -126,15 +139,7 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
     _named(target.command, f"{sub.name}/{target.name} command")
     if not set(retained.values()) <= set(target.outputs):
         raise PlanError(f"{sub.name}: retained outputs must be produced by its target")
-    try:
-        gwf_version = version("gwf")
-    except PackageNotFoundError:
-        gwf_version = None
     return {
-        "kind": "plan", "project": root,
-        "main": {"name": main.name, "version": main.version, "package": dict(main.package)},
-        "software": {"gwflow": __version__, "gwf": gwf_version},
-        "computations": [{
             "identity": identity, "descriptor": descriptor,
             "work_dir": ctx.work_dir, "result_dir": ctx.result_dir,
             "definition": {"name": sub.name, "version": sub.version, "package": dict(sub.package)},
@@ -143,7 +148,74 @@ def plan(main: MainPipeline, bindings: Mapping, *, project: str | Path) -> dict:
             "retained_outputs": retained,
             "targets": [{"name": target.name, "command": target.command,
                          "inputs": list(target.inputs), "outputs": list(target.outputs)}],
-        }],
-        "runtime_evaluation": "not evaluated",
-        "external_input_existence": "not evaluated",
+    }
+
+
+def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | Path) -> dict:
+    """Plan one explicitly selected project without observing runtime state."""
+    from . import __version__
+    from .data import small_data
+    if not isinstance(main, MainPipeline):
+        raise PlanError("definition must be a MainPipeline")
+    _named(main.name, "main name")
+    _named(main.version, "main version")
+    root = os.path.abspath(os.fspath(project))
+    bindings = {} if bindings is None else bindings
+    if not isinstance(bindings, Mapping):
+        raise PlanError(f"{main.name}: bindings must be a mapping")
+    if main.subpipeline is not None:
+        if main.uses or not isinstance(main.subpipeline, Subpipeline):
+            raise PlanError(f"{main.name}: select either one subpipeline or named uses")
+        uses = {"main": Use(main.subpipeline, bindings)}
+    else:
+        if not isinstance(main.uses, Mapping) or not main.uses:
+            raise PlanError(f"{main.name}: requires named uses")
+        unknown = set(bindings) - set(main.uses)
+        if unknown:
+            raise PlanError(f"{main.name}: unknown occurrences {sorted(unknown)}")
+        uses = {}
+        for name, use in main.uses.items():
+            _named(name, "occurrence name")
+            if not isinstance(use, Use) or not isinstance(use.bindings, Mapping):
+                raise PlanError(f"occurrence {name!r}: expected Use with named bindings")
+            overrides = bindings.get(name, {})
+            if not isinstance(overrides, Mapping):
+                raise PlanError(f"occurrence {name!r}: bindings must be a mapping")
+            uses[name] = Use(use.definition, {**use.bindings, **overrides})
+    definitions, computations, occurrences = {}, {}, {}
+    for name, use in sorted(uses.items()):
+        sub = use.definition
+        if isinstance(sub, DefinitionRef):
+            exported = _load_export(sub.selector)
+            if not isinstance(exported, Subpipeline) or (exported.name, exported.version) != (sub.name, sub.version):
+                raise PlanError(f"occurrence {name!r}: export {sub.selector!r} does not match requested {sub.name}@{sub.version}")
+            sub = exported
+        if not isinstance(sub, Subpipeline):
+            raise PlanError(f"occurrence {name!r}: unresolved subpipeline definition")
+        key = (sub.name, sub.version)
+        visible = (dict(sub.inputs), dict(sub.outputs), small_data(dict(sub.parameters), f"{sub.name} parameters"), sub.build)
+        if key in definitions and definitions[key] != visible:
+            raise PlanError(f"occurrence {name!r}: conflicting immutable definition {sub.name}@{sub.version}")
+        definitions[key] = visible
+        comp = _compile(sub, use.bindings, root)
+        identity = comp["identity"]
+        if identity in computations:
+            previous = computations[identity]
+            if previous["targets"] != comp["targets"]:
+                raise PlanError(f"occurrence {name!r}: conflicting compiled definition {sub.name}@{sub.version}")
+            previous["occurrences"].append(name)
+        else:
+            comp["occurrences"] = [name]
+            computations[identity] = comp
+        occurrences[name] = {"identity": identity, "definition": comp["definition"]}
+    try:
+        gwf_version = version("gwf")
+    except PackageNotFoundError:
+        gwf_version = None
+    return {
+        "kind": "plan", "project": root,
+        "main": {"name": main.name, "version": main.version, "package": dict(main.package), "occurrences": occurrences},
+        "software": {"gwflow": __version__, "gwf": gwf_version},
+        "computations": [computations[key] for key in sorted(computations)],
+        "runtime_evaluation": "not evaluated", "external_input_existence": "not evaluated",
     }
