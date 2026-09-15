@@ -56,6 +56,12 @@ class DefinitionRef:
 
 
 @dataclass(frozen=True)
+class OutputRef:
+    occurrence: str
+    output: str
+
+
+@dataclass(frozen=True)
 class Use:
     definition: Subpipeline | DefinitionRef
     bindings: Mapping[str, object] = field(default_factory=dict)
@@ -95,7 +101,7 @@ def _named(value, label):
         raise PlanError(f"{label} must be a nonempty string")
 
 
-def _compile(sub, bindings, root, resource_overrides=None):
+def _compile(sub, bindings, root, resource_overrides=None, connections=None):
     from .graph import compile_graph, interface, relative_output
     from .identity import address, file_binding
     from .data import small_data
@@ -113,11 +119,18 @@ def _compile(sub, bindings, root, resource_overrides=None):
     if not isinstance(sub.parameters, Mapping) or set(sub.parameters) & set(sub.inputs):
         raise PlanError(f"{sub.name}: computational parameters must be a mapping separate from input names")
     parameters = small_data(dict(sub.parameters), f"{sub.name} computational parameters")
+    connections = {} if connections is None else connections
     resolved, descriptors = {}, {}
     for name, kind in sub.inputs.items():
         value = bindings[name]
         label = f"{sub.name} binding {name!r}"
-        if kind == "file":
+        if name in connections:
+            if kind != "file":
+                raise PlanError(f"{label}: OutputRef requires a file input")
+            connection = connections[name]
+            resolved[name] = connection["path"]
+            descriptors[name] = {"kind": "output", "computation": connection["producer"], "output": connection["output"]}
+        elif kind == "file":
             resolved[name], descriptors[name] = file_binding(value, root, label)
         elif kind == "files":
             if not isinstance(value, (list, tuple)):
@@ -147,6 +160,8 @@ def _compile(sub, bindings, root, resource_overrides=None):
             "definition": {"name": sub.name, "version": sub.version, "package": dict(sub.package)},
             "input_interface": dict(sub.inputs), "bindings": resolved,
             "computational_parameters": parameters,
+            "connections": [connections[k] for k in sorted(connections)],
+            "whole_producer_dependencies": sorted({c["producer"] for c in connections.values()}),
             "retained_outputs": retained, "output_interface": output_interface,
             **graph,
     }
@@ -186,7 +201,7 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
     resources = {} if resources is None else resources
     if not isinstance(resources, Mapping) or set(resources) - set(uses):
         raise PlanError(f"{main.name}: resource overrides must name existing occurrences")
-    definitions, computations, occurrences = {}, {}, {}
+    definitions, computations, occurrences, selected = {}, {}, {}, {}
     for name, use in sorted(uses.items()):
         sub = use.definition
         if isinstance(sub, DefinitionRef):
@@ -207,7 +222,13 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
         if key in definitions and definitions[key] != visible:
             raise PlanError(f"occurrence {name!r}: conflicting immutable definition {sub.name}@{sub.version}")
         definitions[key] = visible
-        comp = _compile(sub, use.bindings, root, resources.get(name, {}))
+        selected[name] = sub
+    from .connections import order_uses, resolve_connections, check_boundaries
+    planned = {}
+    for name in order_uses(uses):
+        use, sub = uses[name], selected[name]
+        connections = resolve_connections(use, planned, name)
+        comp = _compile(sub, use.bindings, root, resources.get(name, {}), connections)
         identity = comp["identity"]
         if identity in computations:
             previous = computations[identity]
@@ -219,7 +240,12 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
         else:
             comp["occurrences"] = [name]
             computations[identity] = comp
+        planned[name] = comp
         occurrences[name] = {"identity": identity, "definition": comp["definition"]}
+    ordered = [computations[key] for key in sorted(computations)]
+    for comp in ordered:
+        comp["occurrences"].sort()
+    composition_edges = check_boundaries(ordered)
     try:
         gwf_version = version("gwf")
     except PackageNotFoundError:
@@ -228,6 +254,6 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
         "kind": "plan", "project": root,
         "main": {"name": main.name, "version": main.version, "package": dict(main.package), "occurrences": occurrences},
         "software": {"gwflow": __version__, "gwf": gwf_version},
-        "computations": [computations[key] for key in sorted(computations)],
+        "computations": ordered, "composition_edges": composition_edges,
         "runtime_evaluation": "not evaluated", "external_input_existence": "not evaluated",
     }
