@@ -12,9 +12,10 @@ def main(argv=None):
     command.add_argument("definition", help="importable module:attribute")
     command.add_argument("--project", required=True)
     command.add_argument("--bindings", default="{}", help="JSON object of named input bindings")
+    command.add_argument("--resources", default="{}", help="JSON occurrence/target operational overrides")
     args = parser.parse_args(argv)
     try:
-        result = plan(load(args.definition), json.loads(args.bindings), project=args.project)
+        result = plan(load(args.definition), json.loads(args.bindings), project=args.project, resources=json.loads(args.resources))
     except (PlanError, json.JSONDecodeError) as exc:
         print(f"gwflow: {exc}", file=sys.stderr)
         return 2

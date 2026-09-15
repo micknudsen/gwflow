@@ -141,3 +141,28 @@ The first plans two datasets and independent reporting. Main-only changes
 preserve all identities; reporting changes preserve both dataset identities.
 The repeated case shows four occurrences sharing three computations. The last
 exits 2 explaining the unavailable requested version 99.
+
+## Operational resources
+
+`Target(..., resources={...})` declares default requests. `plan(...,
+resources={occurrence: {target: overrides}})` and CLI `--resources` apply
+operational overrides after building, so overrides cannot alter commands.
+The one-subpipeline shorthand uses occurrence `main`. Supported fields are
+positive integer `memory_mb` and `walltime_seconds`, and nonempty,
+whitespace-free string `partition` and `account`. Booleans are not integers here.
+Unspecified fields retain defaults. Unknown fields, occurrences, or targets fail.
+Equivalent occurrences sharing one computation must request identical resources;
+conflicts fail rather than silently choosing an occurrence's request.
+
+These fields must be computationally neutral. A result-affecting setting belongs
+in the immutable definition even if it resembles a resource request. Resources
+are not supplied to builders and never enter the computation descriptor.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.resources:main --project /tmp/gwflow-demo --bindings '{"source":"a"}'
+conda run --prefix .venv python -m gwflow plan examples.resources:main --project /tmp/gwflow-demo --bindings '{"source":"a"}' --resources '{"main":{"copy":{"memory_mb":2048,"walltime_seconds":120}}}'
+conda run --prefix .venv python -m gwflow plan examples.resources:main --project /tmp/gwflow-demo --bindings '{"source":"a"}' --resources '{"main":{"copy":{"command":"other"}}}'
+```
+
+The first two have identical identities/result locations and different requests.
+The third exits 2: command changes are not operational overrides.
