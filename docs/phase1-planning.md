@@ -199,3 +199,29 @@ conda run --prefix .venv python -m gwflow plan examples.internal_graph:always --
 The first exposes a fork/join; the second has fast/slow terminals. The next two
 exit 2 naming a cycle or ambiguous producer. The last shows one outputless
 always-run target. No target is executed and no runtime jobs are discovered.
+
+## Retained-output connections
+
+Bind a file input with `OutputRef("producer_occurrence", "public_output")` in a
+Python `Use`. References are currently individual file-output references;
+list-element addressing and a CLI reference-expression language are not exposed.
+Composition bindings can still be supplied by ordinary imported Python fixtures.
+The [connection identity contract](adr/0007-retained-output-identities.md)
+records upstream identities, lexical boundary checks, and their scope.
+
+Plans expose each resolved `connections` record (input, producer computation,
+output name, path), `whole_producer_dependencies` independently of target file
+inputs, and `composition_edges` for actual target file consumption. Unknown
+producers/outputs and composition cycles fail before a valid plan is returned.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.connections:main --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.connections:revised --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.connections:private --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.connections:exposed --project /tmp/gwflow-demo
+```
+
+Revising the producer changes producer, consumer and report identities; the
+independent branch stays unchanged. `private` exits 2 because `a` is not a public
+retained name. `exposed` declares `a` under producer version 3 and succeeds.
+No output bytes or execution evidence are inspected.
