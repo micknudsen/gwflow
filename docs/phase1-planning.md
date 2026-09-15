@@ -245,3 +245,27 @@ Copy reads one fast file, but its obligation lists both fast and slow terminals.
 The second adds a fork/join producer; the consumer reads two files and has two
 whole-producer obligations, including all four fork/join targets and terminal d.
 No unrelated freshness inputs, synthetic targets, attempts, or jobs are added.
+
+## Declared target environments
+
+Set `Target(..., image=LocalImage("images/tool.sif"))` or
+`image=RegistryImage("docker://registry.example/tool:1")`. Local paths must end
+in `.sif`; relative paths anchor lexically to the selected project. Both original
+declaration and absolute path are displayed. Registry syntax currently supports
+nonempty `docker://` and `oras://` declarations using letters, digits, `. _ / :
+@ + -`, without whitespace and ending in a letter/digit. This checks syntax,
+not registry existence, image identity, immutability, or runtime usability.
+
+With `image=None` (the default), the plan explicitly records `kind: host`, meaning
+the prepared host environment. There is no subpipeline image field or inheritance.
+Declared image changes require a new subpipeline version; image declarations
+are not resource overrides. No image files, registry access, resolution,
+acquisition, cache, mounts, Bash preflight, or container execution are involved.
+
+```sh
+conda run --prefix .venv python -m gwflow plan examples.target_images:main --project /tmp/gwflow-demo
+conda run --prefix .venv python -m gwflow plan examples.target_images:revised --project /tmp/gwflow-demo
+```
+
+The first shows local SIF, registry and host targets without installed images.
+The second changes one registry declaration under version 2 and has a new identity.

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .planner import PlanError, Target, _named
 from .resources import resources
+from .environments import environment
 
 
 def contained(path, root):
@@ -75,7 +76,7 @@ def compile_graph(targets, ctx, identity, retained, overrides, label):
         requested = resources(target.resources, f"{label}/{name}")
         requested.update(resources(overrides.get(name, {}), f"{label}/{name}"))
         records[name] = {"name": name, "computation": identity, "command": target.command,
-                         **paths, "resources": requested, "always_run": not bool(paths["outputs"])}
+                         **paths, "resources": requested, "environment": environment(target.image, ctx.project, f"{label}/{name}"), "always_run": not bool(paths["outputs"])}
     for path in producers:
         for parent in Path(path).parents:
             if str(parent) in producers:
