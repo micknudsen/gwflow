@@ -18,6 +18,7 @@ class Target:
     inputs: tuple[str, ...] = ()
     outputs: tuple[str, ...] = ()
     resources: Mapping[str, object] = field(default_factory=dict)
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -30,8 +31,8 @@ class Context:
 
     def path(self, relative: str) -> str:
         """Locate a declared output (retained files go in the result slot)."""
-        if not isinstance(relative, str) or not relative or Path(relative).is_absolute() or ".." in Path(relative).parts:
-            raise PlanError(f"output path must be relative and contained: {relative!r}")
+        from .graph import relative_output
+        relative = relative_output(relative)
         root = self.result_dir if relative in self.retained.values() else self.work_dir
         return os.path.normpath(os.path.join(root, relative))
 
@@ -95,13 +96,17 @@ def _named(value, label):
 
 
 def _compile(sub, bindings, root, resource_overrides=None):
-    from .resources import resources
+    from .graph import compile_graph, interface, relative_output
     from .identity import address, file_binding
     from .data import small_data
     for label, value in [("subpipeline name", sub.name), ("subpipeline version", sub.version)]:
         _named(value, label)
     if not isinstance(bindings, Mapping):
         raise PlanError(f"{sub.name}: bindings must be a mapping")
+    interface(sub.inputs, f"{sub.name} input interface")
+    interface(sub.outputs, f"{sub.name} output interface")
+    output_interface = {name: relative_output(path) for name, path in sub.outputs.items()}
+    interface(bindings, f"{sub.name} bindings")
     missing, unknown = set(sub.inputs) - set(bindings), set(bindings) - set(sub.inputs)
     if missing or unknown:
         raise PlanError(f"{sub.name}: missing bindings {sorted(missing)}; unknown bindings {sorted(unknown)}")
@@ -127,34 +132,23 @@ def _compile(sub, bindings, root, resource_overrides=None):
             raise PlanError(f"{label}: unsupported input kind {kind!r}")
     identity, descriptor = address(sub.name, sub.version, descriptors)
     ctx = Context(resolved, os.path.join(root, "work", identity[:2], identity),
-                  os.path.join(root, "results", identity[:2], identity), sub.outputs,
+                  os.path.join(root, "results", identity[:2], identity), output_interface,
                   small_data(parameters, f"{sub.name} computational parameters"))
-    retained = {name: ctx.path(path) for name, path in sub.outputs.items()}
+    retained = {name: ctx.path(path) for name, path in output_interface.items()}
     try:
         targets = list(sub.build(ctx))
     except Exception as exc:
         raise PlanError(f"{sub.name}: builder failed: {exc}") from exc
-    if len(targets) != 1 or not isinstance(targets[0], Target):
-        raise PlanError(f"{sub.name}: this planning slice requires one Target")
-    target = targets[0]
-    _named(target.name, f"{sub.name} target name")
-    overrides = {} if resource_overrides is None else resource_overrides
-    if not isinstance(overrides, Mapping) or set(overrides) - {target.name}:
-        raise PlanError(f"{sub.name}: resource overrides must name existing targets")
-    requested = resources(target.resources, f"{sub.name}/{target.name}")
-    requested.update(resources(overrides.get(target.name, {}), f"{sub.name}/{target.name}"))
-    _named(target.command, f"{sub.name}/{target.name} command")
-    if not set(retained.values()) <= set(target.outputs):
-        raise PlanError(f"{sub.name}: retained outputs must be produced by its target")
+    graph = compile_graph(targets, ctx, identity, retained,
+                          {} if resource_overrides is None else resource_overrides, sub.name)
     return {
             "identity": identity, "descriptor": descriptor,
             "work_dir": ctx.work_dir, "result_dir": ctx.result_dir,
             "definition": {"name": sub.name, "version": sub.version, "package": dict(sub.package)},
             "input_interface": dict(sub.inputs), "bindings": resolved,
             "computational_parameters": parameters,
-            "retained_outputs": retained,
-            "targets": [{"name": target.name, "command": target.command,
-                         "inputs": list(target.inputs), "outputs": list(target.outputs), "resources": requested}],
+            "retained_outputs": retained, "output_interface": output_interface,
+            **graph,
     }
 
 
@@ -202,6 +196,12 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
             sub = exported
         if not isinstance(sub, Subpipeline):
             raise PlanError(f"occurrence {name!r}: unresolved subpipeline definition")
+        from .graph import interface
+        _named(sub.name, "subpipeline name")
+        _named(sub.version, "subpipeline version")
+        interface(sub.inputs, f"{sub.name} input interface")
+        interface(sub.outputs, f"{sub.name} output interface")
+        interface(sub.parameters, f"{sub.name} computational parameters")
         key = (sub.name, sub.version)
         visible = (dict(sub.inputs), dict(sub.outputs), small_data(dict(sub.parameters), f"{sub.name} parameters"), sub.build)
         if key in definitions and definitions[key] != visible:
