@@ -19,6 +19,7 @@ class Target:
     outputs: tuple[str, ...] = ()
     resources: Mapping[str, object] = field(default_factory=dict)
     depends_on: tuple[str, ...] = ()
+    image: object | None = None
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class Context:
     result_dir: str
     retained: Mapping[str, str]
     parameters: Mapping[str, object] = field(default_factory=dict)
+    project: str = ""
 
     def path(self, relative: str) -> str:
         """Locate a declared output (retained files go in the result slot)."""
@@ -146,7 +148,7 @@ def _compile(sub, bindings, root, resource_overrides=None, connections=None):
     identity, descriptor = address(sub.name, sub.version, descriptors)
     ctx = Context(resolved, os.path.join(root, "work", identity[:2], identity),
                   os.path.join(root, "results", identity[:2], identity), output_interface,
-                  small_data(parameters, f"{sub.name} computational parameters"))
+                  small_data(parameters, f"{sub.name} computational parameters"), project=root)
     retained = {name: ctx.path(path) for name, path in output_interface.items()}
     try:
         targets = list(sub.build(ctx))
