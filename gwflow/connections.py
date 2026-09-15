@@ -58,3 +58,15 @@ def check_boundaries(computations):
                                   "consumer": consumer["identity"], "consumer_target": target["name"],
                                   "output": connection["output"], "path": connection["path"]})
     return edges
+
+
+def describe_obligations(computations):
+    by_id = {c["identity"]: c for c in computations}
+    for consumer in computations:
+        consumer["completion_obligations"] = [
+            {"producer": identity, "condition": "whole-subpipeline completion",
+             "required_targets": [t["name"] for t in by_id[identity]["targets"]],
+             "terminal_targets": list(by_id[identity]["terminal_targets"]),
+             "evaluation": "not evaluated"}
+            for identity in consumer["whole_producer_dependencies"]
+        ]

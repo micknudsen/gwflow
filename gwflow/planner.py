@@ -223,7 +223,7 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
             raise PlanError(f"occurrence {name!r}: conflicting immutable definition {sub.name}@{sub.version}")
         definitions[key] = visible
         selected[name] = sub
-    from .connections import order_uses, resolve_connections, check_boundaries
+    from .connections import order_uses, resolve_connections, check_boundaries, describe_obligations
     planned = {}
     for name in order_uses(uses):
         use, sub = uses[name], selected[name]
@@ -246,6 +246,7 @@ def plan(main: MainPipeline, bindings: Mapping | None = None, *, project: str | 
     for comp in ordered:
         comp["occurrences"].sort()
     composition_edges = check_boundaries(ordered)
+    describe_obligations(ordered)
     try:
         gwf_version = version("gwf")
     except PackageNotFoundError:
