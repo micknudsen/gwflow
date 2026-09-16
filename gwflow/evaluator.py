@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .planner import PlanError
-from .runtime_records import current_attempt_path, read_execution_manifest, read_runtime_record, receipt_path, require_consistent_definition
+from .runtime_records import UnsupportedEvidence, UnsupportedTracking, current_attempt_path, read_execution_manifest, read_runtime_record, read_tracking, receipt_path, require_consistent_definition
 
 
 ACTIVE = {"submitted", "running"}
@@ -48,7 +48,10 @@ def _mtime(path, virtual):
 
 
 def _boundary_evidence(project, computation):
-    manifest = read_execution_manifest(project, computation["identity"])
+    try:
+        manifest = read_execution_manifest(project, computation["identity"])
+    except UnsupportedEvidence:
+        return None
     if manifest is None:
         return None
     require_consistent_definition(manifest, computation)
@@ -74,6 +77,7 @@ def evaluate(plan, *, statuses=None):
     the maintained scheduler adapter supplies observations in a later slice.
     """
     statuses = {} if statuses is None else statuses
+    read_tracking(plan["project"])
     result = []
     for computation in plan["computations"]:
         project = plan["project"]

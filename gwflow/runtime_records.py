@@ -17,6 +17,14 @@ from .planner import PlanError
 RUNTIME_RECORD_REVISION = 1
 
 
+class UnsupportedEvidence(PlanError):
+    """An indispensable completion record cannot be interpreted safely."""
+
+
+class UnsupportedTracking(PlanError):
+    """Authoritative job association data cannot be interpreted safely."""
+
+
 def _fail(detail):
     raise PlanError(f"runtime record: {detail}")
 
@@ -273,8 +281,36 @@ def read_execution_manifest(project, identity):
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        _fail(f"cannot read execution manifest for {identity}: {exc}")
-    validate_execution_manifest(record)
+        raise UnsupportedEvidence(f"runtime record: unreadable execution manifest for {identity}: {exc}") from exc
+    try:
+        validate_execution_manifest(record)
+    except PlanError as exc:
+        raise UnsupportedEvidence(f"runtime record: unsupported execution manifest for {identity}: {exc}") from exc
+    return record
+
+
+def tracking_path(project):
+    return Path(project) / ".gwflow" / "runtime" / f"v{RUNTIME_RECORD_REVISION}" / "tracking.json"
+
+
+def validate_tracking(record):
+    if type(record) is not dict or set(record) != {"kind", "tracking_revision", "associations"}:
+        raise UnsupportedTracking("runtime record: tracking has unexpected fields")
+    if record["kind"] != "job-tracking" or record["tracking_revision"] != 1 or type(record["associations"]) is not dict:
+        raise UnsupportedTracking("runtime record: unsupported job tracking revision")
+
+
+def read_tracking(project):
+    path = tracking_path(project)
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        validate_tracking(record)
+    except (OSError, json.JSONDecodeError, PlanError) as exc:
+        if isinstance(exc, UnsupportedTracking):
+            raise
+        raise UnsupportedTracking(f"runtime record: unreadable job tracking: {exc}") from exc
     return record
 
 
