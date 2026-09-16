@@ -82,6 +82,6 @@ def test_runtime_preview_rejects_images_without_side_effects(tmp_path):
 def test_runtime_submission_is_not_mistaken_for_a_preview(tmp_path):
     result = runtime_cli(tmp_path, "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert result.returncode == 1
-    assert result.stdout == ""
+    assert json.loads(result.stdout)["outcome"] == "error"
     assert "submission is not available" in result.stderr
     assert list(tmp_path.iterdir()) == []
