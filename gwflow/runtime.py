@@ -1,8 +1,7 @@
 """Read-only runtime preview contracts.
 
-Submission, scheduler observation, and persisted execution authority are added
-by later Phase 2 slices.  This module deliberately consumes a completed pure
-plan and performs no filesystem mutation.
+This module consumes a completed pure plan and performs no filesystem mutation.
+Submission shares its evaluation while holding the project command guard.
 """
 from collections.abc import Mapping
 
@@ -29,17 +28,21 @@ def host_only(plan: Mapping) -> None:
                 )
 
 
+def _problem(plan, code, message, *, outcome="blocked"):
+    return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION,
+            "project": plan["project"], "outcome": outcome,
+            "reason": {"code": code, "message": message}, "diagnostic": message,
+            "computations": []}
+
+
 def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
-    def problem(code, message, outcome="blocked"):
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": outcome, "reason": {"code": code, "message": message}, "diagnostic": message, "computations": []}
-
     try:
         generation = observation_generation(plan["project"])
         blocked = blocking_reason(plan["project"])
         if blocked:
-            return problem(*blocked)
+            return _problem(plan, *blocked)
         failure = None
         try:
             report = evaluated_preview(plan, statuses=statuses, job_ids=job_ids)
@@ -48,14 +51,14 @@ def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
         changed = generation != observation_generation(plan["project"])
         blocked = blocking_reason(plan["project"])
         if blocked:
-            return problem(*blocked)
+            return _problem(plan, *blocked)
         if changed:
-            return problem("runtime-observation-changed", "a submission overlapped runtime observations; retry the read-only preview")
+            return _problem(plan, "runtime-observation-changed", "a submission overlapped runtime observations; retry the read-only preview")
         if failure is not None:
             raise failure
         return report
     except OSError as exc:
-        return problem("filesystem-error", str(exc), "error")
+        return _problem(plan, "filesystem-error", str(exc), outcome="error")
 
 
 def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
@@ -63,11 +66,11 @@ def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     try:
         evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
     except UnsupportedTracking as exc:
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "reason": {"code": "untrustworthy-job-tracking", "message": str(exc)}, "diagnostic": str(exc), "computations": []}
+        return _problem(plan, "untrustworthy-job-tracking", str(exc))
     except RuntimeFailure as exc:
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "error", "reason": {"code": exc.code, "message": str(exc)}, "diagnostic": str(exc), "computations": []}
+        return _problem(plan, exc.code, str(exc), outcome="error")
     except OSError as exc:
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "error", "reason": {"code": "filesystem-error", "message": str(exc)}, "diagnostic": str(exc), "computations": []}
+        return _problem(plan, "filesystem-error", str(exc), outcome="error")
     computations = []
     for computation in plan["computations"]:
         decision = evaluated[computation["identity"]]

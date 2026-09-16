@@ -1,4 +1,4 @@
-"""The planning command; imports trusted definition code, never runs targets."""
+"""Command entry points for pure planning and host-only runtime work."""
 import argparse
 import json
 import sys
