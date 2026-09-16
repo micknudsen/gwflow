@@ -36,6 +36,8 @@ Runtime execution is host-only in Phase 2. A runtime request containing a local
 or registry image is rejected before any job can be submitted; pure `plan`
 continues to inspect image declarations.
 
+Runtime declaration records are described in [runtime records](docs/runtime-records.md).
+
 ## Run the current test suite
 
 Create an isolated Conda environment from the repository root:

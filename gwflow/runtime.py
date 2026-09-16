@@ -7,6 +7,7 @@ plan and performs no filesystem mutation.
 from collections.abc import Mapping
 
 from .planner import PlanError
+from .runtime_records import read_execution_manifest, require_consistent_definition
 
 
 RUNTIME_PREVIEW_REVISION = 1
@@ -30,6 +31,9 @@ def preview(plan: Mapping) -> dict:
     host_only(plan)
     computations = []
     for computation in plan["computations"]:
+        saved = read_execution_manifest(plan["project"], computation["identity"])
+        if saved is not None:
+            require_consistent_definition(saved, computation)
         targets = [
             {
                 "name": target["name"],
