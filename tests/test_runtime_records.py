@@ -13,6 +13,7 @@ from gwflow.runtime_records import attempt_diagnostic, current_attempt, job_asso
 from gwflow.runtime_records import computational_declaration, read_execution_manifest, require_consistent_definition, write_execution_manifest
 from gwflow.runtime_records import current_attempt_path, execution_manifest_path, read_runtime_record, receipt_path, write_runtime_record
 from gwflow.runtime_records import UnsupportedEvidence
+from gwflow.runtime_records import job_tracking, write_tracking
 from test_planner import runtime_cli
 
 
@@ -158,6 +159,7 @@ def test_malformed_targets_never_escape_validation_as_python_errors(tmp_path, fi
 
 
 def test_reordered_retained_graph_is_not_a_definition_change(tmp_path):
+    write_tracking(tmp_path, job_tracking())
     (tmp_path / "reads.txt").write_text("input\n")
     result = plan(load("examples.internal_graph:main"), {"source": "reads.txt"}, project=tmp_path)
     record = execution_manifest(result, result["computations"][0]["identity"])
@@ -174,6 +176,7 @@ def test_reordered_retained_graph_is_not_a_definition_change(tmp_path):
 
 
 def test_runtime_command_enforces_saved_visible_declaration(tmp_path):
+    write_tracking(tmp_path, job_tracking())
     (tmp_path / "reads.txt").write_text("input\n")
     result = plan(load("examples.runtime_records:main"), {"source": "reads.txt"}, project=tmp_path)
     current = result["computations"][0]
@@ -189,6 +192,7 @@ def test_runtime_command_enforces_saved_visible_declaration(tmp_path):
     ("boolean_parameter", "integer_parameter"), ("integer_parameter", "float_parameter"),
 ])
 def test_command_rejects_changed_parameter_type_under_the_same_version(tmp_path, original, replacement):
+    write_tracking(tmp_path, job_tracking())
     (tmp_path / "reads.txt").write_text("input\n")
     result = plan(load(f"examples.runtime_records:{original}"), {"source": "reads.txt"}, project=tmp_path)
     write_execution_manifest(tmp_path, execution_manifest(result, result["computations"][0]["identity"]))

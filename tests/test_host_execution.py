@@ -10,6 +10,7 @@ from gwflow import MainPipeline, PlanError, Subpipeline, Target, execution_manif
 from gwflow.host_execution import ATTEMPT_ALREADY_STARTED, ATTEMPT_FENCE_FAILURE, OUTPUT_CHECK_FAILURE, RECEIPT_PUBLICATION_FAILURE, execute, prepare_attempt, run_prepared, scheduler_name
 from gwflow.runtime_records import current_attempt_path, read_runtime_record, receipt_path, write_execution_manifest, write_runtime_record
 from test_planner import runtime_cli
+from gwflow.runtime_records import job_association, job_tracking, write_tracking
 
 
 def target(tmp_path, command):
@@ -201,6 +202,9 @@ def test_late_actual_old_success_cannot_certify_failed_replacement(tmp_path):
     replacement = prepare_attempt(tmp_path, computation, item, "replacement")
     receipt_path(tmp_path, computation["identity"], item["name"], "replacement").mkdir()
     assert worker(replacement).returncode == RECEIPT_PUBLICATION_FAILURE
+    # The local integration harness does not submit jobs. Seed explicit
+    # authoritative tracking for this controlled expired-history fixture.
+    write_tracking(tmp_path, job_tracking([job_association(computation["identity"], item["name"], "replacement", "fixture-123")]))
     write_runtime_record(old_receipt, success)
     preview = runtime_cli(tmp_path, "--dry-run", "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert preview.returncode == 0, preview.stderr

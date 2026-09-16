@@ -7,6 +7,7 @@ from gwflow import execution_manifest, load, plan
 from gwflow.evaluator import evaluate
 from gwflow.runtime_records import current_attempt, current_attempt_path, receipt_path, success_receipt, write_execution_manifest, write_runtime_record
 from test_planner import runtime_cli
+from gwflow.runtime_records import job_association, job_tracking, write_tracking
 
 
 def stamp(path, value):
@@ -23,6 +24,7 @@ def completed(tmp_path):
     stamp(Path(target["outputs"][0]), 20)
     write_execution_manifest(tmp_path, execution_manifest(result, computation["identity"]))
     attempt = "attempt-1"
+    write_tracking(tmp_path, job_tracking([job_association(computation["identity"], target["name"], attempt, "123")]))
     write_runtime_record(current_attempt_path(tmp_path, computation["identity"], target["name"]), current_attempt(computation["identity"], target["name"], attempt))
     write_runtime_record(receipt_path(tmp_path, computation["identity"], target["name"], attempt), success_receipt(computation["identity"], target["name"], attempt, [{"path": target["outputs"][0], "mtime_ns": 20}]))
     return result, computation, target

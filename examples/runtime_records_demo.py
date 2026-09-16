@@ -15,6 +15,7 @@ from gwflow.runtime_records import (
     attempt_diagnostic, current_attempt, job_association, read_execution_manifest,
     read_runtime_record, submission_intent, success_receipt,
     write_execution_manifest, write_runtime_record,
+    job_tracking, write_tracking,
 )
 
 
@@ -37,6 +38,7 @@ def main(argv=None):
         planned = plan(load(definition), {"source": "reads.txt"}, project=project)
         computation = planned["computations"][0]
         record = execution_manifest(planned, computation["identity"])
+        write_tracking(project, job_tracking())  # Declaration-only fixture: no jobs have been accepted.
         write_execution_manifest(project, record)
         assert read_execution_manifest(project, computation["identity"]) == record
         return project, computation
