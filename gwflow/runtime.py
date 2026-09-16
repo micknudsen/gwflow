@@ -7,7 +7,7 @@ plan and performs no filesystem mutation.
 from collections.abc import Mapping
 
 from .planner import PlanError
-from .runtime_records import read_execution_manifest, require_consistent_definition
+from .runtime_records import UnsupportedEvidence, UnsupportedTracking, read_execution_manifest, require_consistent_definition
 from .evaluator import evaluate
 
 
@@ -30,11 +30,17 @@ def host_only(plan: Mapping) -> None:
 def preview(plan: Mapping) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
-    evaluated = {item["identity"]: item for item in evaluate(plan)}
+    try:
+        evaluated = {item["identity"]: item for item in evaluate(plan)}
+    except UnsupportedTracking as exc:
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "diagnostic": str(exc), "computations": []}
     computations = []
     for computation in plan["computations"]:
         decision = evaluated[computation["identity"]]
-        saved = read_execution_manifest(plan["project"], computation["identity"])
+        try:
+            saved = read_execution_manifest(plan["project"], computation["identity"])
+        except UnsupportedEvidence:
+            saved = True
         no_runtime_state = saved is None
         targets = [
             {
