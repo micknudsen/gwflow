@@ -12,6 +12,7 @@ from gwflow import MainPipeline, Subpipeline, Target, execution_manifest, plan
 from gwflow.runtime_records import (
     current_attempt, current_attempt_path, receipt_path, success_receipt,
     write_execution_manifest, write_runtime_record,
+    job_association, job_tracking, write_tracking,
 )
 
 
@@ -44,6 +45,10 @@ def prepare_fixture(project):
     planned = plan(main, {"source": "reads.txt", "other": "other.txt"}, project=project)
     computation = planned["computations"][0]
     identity = computation["identity"]
+    write_tracking(project, job_tracking([
+        job_association(identity, target["name"], "fixture-success", str(index + 100))
+        for index, target in enumerate(computation["targets"])
+    ]))
     write_execution_manifest(project, execution_manifest(planned, identity))
     for target in computation["targets"]:
         stamp_value = {"a": 20, "b": 30, "c": 200, "d": 210, "e": 220}[target["name"]]

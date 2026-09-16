@@ -12,6 +12,7 @@ from gwflow import execution_manifest, load, plan
 from gwflow.runtime_records import current_attempt, current_attempt_path, receipt_path, success_receipt, write_execution_manifest, write_runtime_record
 
 from test_planner import runtime_cli
+from gwflow.runtime_records import association_key, job_association, job_tracking, read_tracking, write_tracking
 
 
 def preview(tmp_path):
@@ -102,6 +103,10 @@ def test_equal_future_and_timestamp_preserving_edits_ignore_receipt_mtime(tmp_pa
 
 def complete_plan(planned):
     project = planned["project"]
+    write_tracking(project, job_tracking([
+        job_association(computation["identity"], target["name"], "one", str(index + 100))
+        for index, (computation, target) in enumerate((c, t) for c in planned["computations"] for t in c["targets"])
+    ]))
     produced = {path for c in planned["computations"] for t in c["targets"] for path in t["outputs"]}
     for computation in planned["computations"]:
         identity = computation["identity"]
@@ -185,6 +190,9 @@ def test_outputless_targets_are_never_made_reusable_by_receipts(tmp_path):
 def test_new_current_attempt_is_not_certified_by_a_late_historical_receipt(tmp_path):
     planned = prepare_fixture(tmp_path)
     identity = planned["computations"][0]["identity"]
+    tracking = read_tracking(tmp_path)
+    tracking["associations"][association_key(identity, "e")] = job_association(identity, "e", "replacement", "999")
+    write_tracking(tmp_path, tracking)
     write_runtime_record(current_attempt_path(tmp_path, identity, "e"), current_attempt(identity, "e", "replacement"))
     old_receipt = receipt_path(tmp_path, identity, "e", "fixture-success")
     # Republish the old receipt after the replacement is selected.

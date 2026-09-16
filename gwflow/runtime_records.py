@@ -262,8 +262,86 @@ def tracking_path(project):
 def validate_tracking(record):
     if type(record) is not dict or set(record) != {"kind", "tracking_revision", "associations"}:
         raise UnsupportedTracking("runtime record: tracking has unexpected fields")
-    if record["kind"] != "job-tracking" or record["tracking_revision"] != 1 or type(record["associations"]) is not dict:
+    if record["kind"] != "job-tracking" or type(record["tracking_revision"]) is not int or record["tracking_revision"] != 1 or type(record["associations"]) is not dict:
         raise UnsupportedTracking("runtime record: unsupported job tracking revision")
+    job_ids = set()
+    try:
+        for key, association in record["associations"].items():
+            validate_runtime_record(association)
+            if association["kind"] != "job-association" or key != association_key(association["identity"], association["target"]):
+                _fail("misfiled job association")
+            if association["job_id"] in job_ids:
+                _fail("one job ID is associated with multiple targets")
+            job_ids.add(association["job_id"])
+    except PlanError as exc:
+        raise UnsupportedTracking(f"runtime record: invalid authoritative tracking: {exc}") from exc
+
+
+def association_key(identity, target):
+    _identity(identity, "job association")
+    _token(target, "target")
+    return f"{identity}:{target}"
+
+
+def job_tracking(associations=()):
+    """Build authoritative latest-job associations, independently of receipts."""
+    record = {"kind": "job-tracking", "tracking_revision": 1, "associations": {}}
+    for association in associations:
+        validate_runtime_record(association)
+        if association["kind"] != "job-association":
+            raise UnsupportedTracking("runtime record: expected a job association")
+        key = association_key(association["identity"], association["target"])
+        if key in record["associations"]:
+            raise UnsupportedTracking("runtime record: duplicate target association")
+        record["associations"][key] = deepcopy(association)
+    validate_tracking(record)
+    return record
+
+
+def write_tracking(project, record):
+    """Publish an already established authoritative association set durably."""
+    validate_tracking(record)
+    return publish_json(tracking_path(project), record)
+
+
+def _require_tracked_history(project, record):
+    """Detect missing authority without reconstructing it from completion data."""
+    selections = {
+        current_attempt_path(project, item["identity"], item["target"]): item
+        for item in record["associations"].values()
+    }
+    for directory in _retained_target_directories(project):
+        if directory / "current.json" not in selections:
+            raise UnsupportedTracking(f"runtime record: retained target history has no authoritative job association: {directory}; manual recovery is required")
+    for path, association in selections.items():
+        try:
+            selected = read_runtime_record(path)
+        except PlanError:
+            # Missing/incompatible completion evidence is ordinary recovery,
+            # not loss of the independent authoritative association.
+            continue
+        if selected is not None and selected["kind"] == "current-attempt" and all(selected[key] == association[key] for key in ("identity", "target")) and selected["attempt"] != association["attempt"]:
+            raise UnsupportedTracking(f"runtime record: selected attempt has no matching authoritative job association: {path}; manual recovery is required")
+
+
+def _retained_target_directories(project):
+    root = tracking_path(project).parent / "computations"
+    if not root.exists():
+        return
+
+    def unreadable(error):
+        raise error
+
+    # Do not let glob's suppressed traversal errors masquerade as no history.
+    # Only inspect target directory names; receipt/log contents are not authority.
+    for directory, children, _ in os.walk(root, onerror=unreadable):
+        directory = Path(directory)
+        depth = len(directory.relative_to(root).parts)
+        if depth == 3:
+            if directory.name == "targets":
+                for name in children:
+                    yield directory / name
+            children[:] = []
 
 
 def read_tracking(project):
@@ -271,7 +349,12 @@ def read_tracking(project):
     try:
         record = read_json(path)
         validate_tracking(record)
+        if any(entry.name != path.parent.name for entry in path.parent.parent.iterdir()):
+            raise UnsupportedTracking("runtime record: unsupported retained runtime namespace; authoritative tracking cannot be established")
+        _require_tracked_history(project, record)
     except FileNotFoundError:
+        if path.parent.parent.exists():
+            raise UnsupportedTracking("runtime record: authoritative job tracking is missing from a retained runtime; manual recovery is required")
         return None
     except (OSError, ValueError, PlanError) as exc:
         if isinstance(exc, UnsupportedTracking):

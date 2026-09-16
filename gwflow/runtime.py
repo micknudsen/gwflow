@@ -34,7 +34,7 @@ def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     try:
         evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
     except UnsupportedTracking as exc:
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "diagnostic": str(exc), "computations": []}
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "reason": {"code": "untrustworthy-job-tracking", "message": str(exc)}, "diagnostic": str(exc), "computations": []}
     except RuntimeFailure as exc:
         return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "error", "reason": {"code": exc.code, "message": str(exc)}, "diagnostic": str(exc), "computations": []}
     except OSError as exc:
