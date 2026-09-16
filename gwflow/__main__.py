@@ -36,7 +36,10 @@ def main(argv=None):
             print("gwflow: runtime submission is not available until the static scheduler adapter is installed", file=sys.stderr)
             return 1
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 1 if args.command == "run" and result.get("outcome") == "blocked" else 0
+    if args.command == "run" and result.get("outcome") in {"blocked", "error"}:
+        print(f"gwflow: {result['diagnostic']}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -7,8 +7,9 @@ plan and performs no filesystem mutation.
 from collections.abc import Mapping
 
 from .planner import PlanError
-from .runtime_records import UnsupportedEvidence, UnsupportedTracking, read_execution_manifest, require_consistent_definition
+from .runtime_records import UnsupportedTracking
 from .evaluator import evaluate
+from .runtime_errors import RuntimeFailure
 
 
 RUNTIME_PREVIEW_REVISION = 1
@@ -27,27 +28,26 @@ def host_only(plan: Mapping) -> None:
                 )
 
 
-def preview(plan: Mapping) -> dict:
+def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
     try:
-        evaluated = {item["identity"]: item for item in evaluate(plan)}
+        evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
     except UnsupportedTracking as exc:
         return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "diagnostic": str(exc), "computations": []}
+    except RuntimeFailure as exc:
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "error", "reason": {"code": exc.code, "message": str(exc)}, "diagnostic": str(exc), "computations": []}
+    except OSError as exc:
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "error", "reason": {"code": "filesystem-error", "message": str(exc)}, "diagnostic": str(exc), "computations": []}
     computations = []
     for computation in plan["computations"]:
         decision = evaluated[computation["identity"]]
-        try:
-            saved = read_execution_manifest(plan["project"], computation["identity"])
-        except UnsupportedEvidence:
-            saved = True
-        no_runtime_state = saved is None
         targets = [
             {
                 "name": target["name"], "decision": target["decision"],
-                "reason": {"code": "no-runtime-state" if no_runtime_state else target["reason"], "message": "no retained runtime state has been evaluated" if no_runtime_state else target["reason"].replace("-", " ")},
-                "evidence": [],
-                "job_ids": [],
+                "reason": {"code": target["reason"], "message": target["reason"].replace("-", " ")},
+                "evidence": list(target["evidence"]),
+                "job_ids": list(target["job_ids"]),
             }
             for target in decision["targets"]
         ]
@@ -55,9 +55,9 @@ def preview(plan: Mapping) -> dict:
             {
                 "identity": computation["identity"],
                 "decision": decision["decision"],
-                "reason": {"code": "no-runtime-state" if no_runtime_state else decision["reason"], "message": "no retained runtime state has been evaluated" if no_runtime_state else decision["reason"].replace("-", " ")},
-                "evidence": [],
-                "job_ids": [],
+                "reason": {"code": decision["reason"], "message": decision["reason"].replace("-", " ")},
+                "evidence": decision["evidence"],
+                "job_ids": decision["job_ids"],
                 "targets": targets,
             }
         )

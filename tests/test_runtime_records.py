@@ -174,6 +174,7 @@ def test_reordered_retained_graph_is_not_a_definition_change(tmp_path):
 
 
 def test_runtime_command_enforces_saved_visible_declaration(tmp_path):
+    (tmp_path / "reads.txt").write_text("input\n")
     result = plan(load("examples.runtime_records:main"), {"source": "reads.txt"}, project=tmp_path)
     current = result["computations"][0]
     write_execution_manifest(tmp_path, execution_manifest(result, current["identity"]))

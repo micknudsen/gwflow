@@ -53,6 +53,9 @@ def test_command(tmp_path):
 
 
 def test_runtime_preview_is_read_only_and_structured(tmp_path):
+    source = tmp_path / "reads.txt"
+    source.write_text("input\n")
+    before = (source.read_bytes(), source.stat().st_mtime_ns)
     result = runtime_cli(tmp_path, "--dry-run", "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert result.returncode == 0, result.stderr
     preview = json.loads(result.stdout)
@@ -61,9 +64,11 @@ def test_runtime_preview_is_read_only_and_structured(tmp_path):
     computation = preview["computations"][0]
     assert computation["decision"] == "execute"
     assert computation["reason"]["code"] == "no-runtime-state"
-    assert computation["evidence"] == computation["job_ids"] == []
+    assert computation["job_ids"] == []
+    assert any(item["kind"] == "input-file" and item["path"] == str(source) for item in computation["evidence"])
     assert computation["targets"][0]["decision"] == "execute"
-    assert list(tmp_path.iterdir()) == []
+    assert list(tmp_path.iterdir()) == [source]
+    assert (source.read_bytes(), source.stat().st_mtime_ns) == before
 
 
 def test_runtime_preview_rejects_images_without_side_effects(tmp_path):
