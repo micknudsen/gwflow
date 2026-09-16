@@ -3,7 +3,10 @@
 Execution evidence and remaining gates: [Phase 0 results](phase0-results.md).
 
 Phase 0 is complete on the selected Slurm, Apptainer, and BeeGFS configuration.
-Phase 1 is the next implementation phase. This plan accompanies the
+Phase 1 is complete (parent issue #3 and all twelve implementation tickets are
+closed). Phase 2 is specified in [issue #29](https://github.com/micknudsen/gwflow/issues/29)
+and awaits implementation; see its [decision record](phase2-planning.md).
+This plan accompanies the
 [architecture](architecture-proposal.md) and [requirements](design.md).
 
 The first deliverable was evidence that the difficult integration points work
@@ -65,15 +68,79 @@ Exercise commands with pipelines, redirection, and multiple statements; use exte
 
 ## Phase 1 — definitions, identity, and inspectable plans
 
+**Complete.** The [planning guide](phase1-planning.md), [manifest contract](manifest-schema.md),
+and ADRs 0005–0008 describe the implemented interfaces. The scope below records
+what this phase delivered.
+
 Implement the agreed Python definition interfaces, named input/output bindings, static graph validation, and separate main/subpipeline/software versions. Add deterministic descriptor-based paths and required manifest schemas. Keep attempt identities separate from reusable computation identities. Provide plan output explaining graph membership, dependencies, target images, retained outputs, and proposed reuse/recovery reasons.
 
 Validate a main-only version change, a changed upstream definition, changed computational parameter values under a new subpipeline version, multiple datasets, and invalid access to an internal intermediate. Reuse must not depend on input-content hashing. This phase provides an inspectable plan, not a claim of a complete runnable release.
 
 ## Phase 2 — execution, retained evidence, and reuse
 
+**Specified; not implemented.** The accepted parent specification is
+[issue #29](https://github.com/micknudsen/gwflow/issues/29); its preparation
+decisions are recorded in [Phase 2 planning](phase2-planning.md). This is a controlled development
+milestone: sequential submissions with intact tracking include known active-job
+attachment, while full concurrency and automatic interruption reconciliation
+remain Phase 4. Use an exclusive atomic-directory command guard and durable
+pre-submission marker. Release the guard after durable tracking publication,
+not job completion. Uncertain interruption requires manual reconciliation
+before further submission; no automatic stale takeover is provided. Recovery
+requires quiescence of the affected submission: identify its intended jobs,
+restore verifiable job associations, and invalidate unverifiable evidence before
+explicitly clearing the block. Uncertain ownership/activity keeps the block.
+
+Before replacement, check affected owned computations and consumers across the
+project, including active consumers absent from the requested composition.
+Reject conflicting replacement without cancelling jobs; permit unrelated work
+and ordinary equivalent active-job attachment.
+
+Keep `plan` pure. Add `run` and a runtime `run --dry-run` preview using a shared
+evaluator; the JSON preview is strictly read-only, with stable computation/target
+decisions and reason codes, relevant job IDs, and supporting evidence. Actual
+submission reevaluates. Guarded/uncertain previews report a blocking condition
+without definitive execution/reuse decisions. Runtime stdout is JSON; readable
+diagnostics go to stderr. Exit 0 means valid preview or successful submission
+and tracking publication, not completed computation; exit 2 means invalid
+definitions/bindings, unsupported images, or visible version violations; exit 1
+means runtime/query/blocked/partial-submission failure. Partial failures report
+known accepted job IDs.
+
+Reject visible computational definition mismatches
+against saved definitions for the same bound computation under an unchanged
+published version, while allowing
+operational resource and provenance-only changes. Compare commands literally and
+require a new version for target renames; normalize representation-only mapping
+and graph ordering without shell-equivalence analysis. Retain per-attempt metadata
+and logs without automatic expiration in this phase; historical records cannot
+certify replacement attempts. These are accepted requirements, not available
+commands or runtime features.
+
+Phase 2 is host-only: reject any image-declaring plan before submitting any jobs,
+while pure planning continues to inspect image declarations. Phase 3 retains
+responsibility for required first-release image execution. Required completion
+evidence consists of a computation manifest, durable per-target current-attempt
+selection, and the selected attempt's success receipt, evaluated with scheduler
+status and freshness. Logs, superseded receipts, and summaries are diagnostic;
+their loss alone does not trigger recomputation.
+
 Implement the demonstrated gwf adapter, target evidence publication, whole-boundary evaluation/pruning, scheduler ordering, and ordinary partial retry. Preserve gwf job tracking and logs when reusable targets disappear from the executable graph. Integrate required-evidence recovery and attempt invalidation.
 
 Turn the meaningful E1–E3 fixtures into maintained behavioral regression checks. Demonstrate completion, cleanup-tolerant reuse, failed-target retry, missing-evidence regeneration, and expired-history fallback end to end. Do not add a completion job or a persistent observer.
+
+Completion of Phase 2 requires maintained portable E1–E3 regressions and a fresh,
+opt-in live Slurm demonstration through the product interface: whole-producer
+barriers, failure blocking, partial retry, and reuse after intermediate removal.
+Exercise expired-history fallback with controlled scheduler observations;
+waiting for live accounting history to expire is not required.
+
+The primary behavioral test seam is the public planning/preview/submission
+command boundary, preserving existing public Python planning tests. Portable
+runtime checks use real gwf/Bash and a test-only scheduler substitute; the live
+gate exercises the same product commands against Slurm. Test externally visible
+decisions, jobs/dependencies, payloads, evidence, diagnostics, and side effects,
+not the disposable probes' private helpers or incidental implementation details.
 
 ## Phase 3 — image-backed target execution
 
@@ -124,7 +191,7 @@ corresponding product phase.
 | A10 | Known queued/running/failed/cancelled states retain gwf precedence; expired history follows the gwf-compatible fallback with retained evidence. | E2; Phase 2 |
 | A11 | Missing required outputs/evidence causes automatic recovery; a missing optional summary is reconstructed from intact proof. | E2; Phase 2 |
 | A12 | Recovery after intermediate cleanup regenerates physical prerequisites needed by executing targets. | E1–E2; Phase 2 |
-| A13 | A later submission reuses active jobs and attaches new consumers to their actual job IDs. | E3–E4; Phase 4 |
+| A13 | A later submission reuses active jobs and attaches new consumers to their actual job IDs. | E3–E4; Phase 2 for sequential submissions with intact tracking; Phase 4 for coordinated operation |
 | A14 | Overlapping commands and interrupted submissions preserve tracking and reconcile potentially accepted jobs before resubmitting. | E4; Phase 4 |
 | A15 | Replacing a failed upstream repairs obsolete owned queued dependencies without cancelling unrelated or running jobs. | E4; Phase 4 |
 | A16 | Explicit cleanup removes only eligible owned temporary work and preserves results, required evidence, provenance, and external paths. | Phase 4 |
@@ -138,6 +205,6 @@ corresponding product phase.
 ## Implementation boundary
 
 Phase 0 establishes integration feasibility, not finished product behavior.
-Product implementation begins with Phase 1. Broader backends, dynamic graphs,
+Phase 1 product planning is complete; Phase 2 execution implementation is next. Broader backends, dynamic graphs,
 global caches, environment creation, and other deferred scope are not
 prerequisites for this release.

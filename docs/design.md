@@ -4,7 +4,10 @@ This document defines the intended first release. The
 [architecture](architecture-proposal.md) describes the candidate mechanisms,
 the [implementation plan](implementation-plan.md) maps the work to acceptance
 criteria, and the [Phase 0 results](phase0-results.md) record the feasibility
-evidence. Phase 1 is the next implementation phase.
+evidence. Phase 1 is complete; the accepted Phase 2 specification is
+[issue #29](https://github.com/micknudsen/gwflow/issues/29), with runtime
+implementation still outstanding. The [preparation record](phase2-planning.md)
+separates accepted behavior from technical choices assigned to implementation tickets.
 
 ## Product scope
 
@@ -36,6 +39,13 @@ evidence. Phase 1 is the next implementation phase.
   do not vary as caller overrides of a published version.
 - Operational resources such as memory, walltime, partition, and account may
   change without a version bump when they do not change the computation.
+- Phase 2 will reject visible computational definition changes against saved
+  definitions for the same bound computation under the same published version.
+  Operational resources and
+  provenance-only changes remain permitted; hidden scripts and tools are not
+  automatically inspected. See [ADR 0009](adr/0009-persisted-definition-consistency.md).
+  Compare command text literally and treat internal target renames as definition
+  changes; normalize only representation ordering of mappings/graph relations.
 - Main-pipeline version changes alone do not invalidate unchanged bound
   subpipelines. Relevant upstream computation-identity changes invalidate their
   consumers even when newly produced bytes happen to match.
@@ -81,6 +91,14 @@ evidence. Phase 1 is the next implementation phase.
   cleanup regenerates any physical prerequisites an executing command needs.
 - Every execution attempt is fenced from earlier attempts so that late evidence
   cannot certify a replacement run.
+- Phase 2's required records are the computation manifest, a durable per-target
+  current-attempt selection, and that attempt's success receipt. Their validity
+  is evaluated alongside scheduler status and freshness; receipt recency does
+  not select the current attempt. See [ADR 0010](adr/0010-current-attempt-evidence.md).
+- Phase 2 retains per-attempt metadata and stdout/stderr logs, including failed
+  and superseded attempts, without automatic expiration. Diagnostic history is
+  separate from current evidence eligible for reuse. Loss of logs, superseded
+  receipts, or derived summaries alone does not require recomputation.
 - Each bound computation has one current result slot. Rebuilding after an input
   change need not retain historical copies of the previous result files.
 
@@ -93,6 +111,15 @@ evidence. Phase 1 is the next implementation phase.
   accepted before resubmitting.
 - Replacing a failed upstream computation repairs obsolete dependencies for
   owned queued consumers without cancelling unrelated or running jobs.
+- Phase 2 checks affected owned computations and consumers across the project
+  before replacement, including active consumers outside the requested
+  composition. Conflicts or uncertain ownership/activity block submission;
+  unrelated work and ordinary equivalent-job attachment remain permitted.
+  Automatic obsolete-consumer repair remains Phase 4 work.
+- In the controlled Phase 2 milestone, uncertain interrupted submission requires
+  manual reconciliation after the affected submission is quiescent. Restore
+  verifiable job associations and invalidate unverifiable completion evidence
+  before explicitly clearing the block; do not fabricate success from outputs.
 - Cleanup is explicit. It removes only eligible, inactive, gwflow-managed
   temporary work and preserves retained outputs, required completion evidence,
   provenance, and external paths.

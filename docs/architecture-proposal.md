@@ -2,8 +2,9 @@
 
 The [requirements](design.md) define the intended behavior. This document
 describes the architecture supported by the bounded Phase 0 feasibility work on
-the selected Slurm, Apptainer, and BeeGFS configuration. Phase 1 is the next
-implementation phase; the mechanisms below are not yet product code. The
+the selected Slurm, Apptainer, and BeeGFS configuration. Phase 1 planning is
+implemented and complete. Runtime mechanisms below remain unimplemented product
+work; [Phase 2 preparation](phase2-planning.md) records the current decisions. The
 [implementation plan](implementation-plan.md) records the feasibility gates and
 product phases.
 
@@ -36,9 +37,9 @@ The diagram describes one invocation; the evidence is read again by a later user
 
 ## Language and identity
 
-These terms are also recorded in [CONTEXT.md](../CONTEXT.md). The identity mechanism below remains subject to implementation validation.
+These terms are also recorded in [CONTEXT.md](../CONTEXT.md). Phase 1 implements the identity contracts in ADRs 0005–0007; runtime attempts and reuse remain Phase 2 work.
 
-| Term | Proposed meaning |
+| Term | Meaning |
 | --- | --- |
 | Bound computation | A particular versioned subpipeline definition applied to named input bindings. It is the unit whose completed result can be reused. |
 | Pipeline submission | A request to plan a main pipeline and submit whatever work is needed. It may reuse completed computations and already active jobs. |
@@ -49,7 +50,7 @@ A subpipeline version describes a fixed computational definition, including targ
 
 ### Computation descriptor
 
-Propose a deterministic descriptor containing:
+Phase 1 implements a deterministic descriptor containing:
 
 - A format/identity revision, subpipeline name, and explicit subpipeline version.
 - Named, typed input bindings: file references, fixed lists of file references, and small JSON-compatible data values.
@@ -57,9 +58,9 @@ Propose a deterministic descriptor containing:
 
 Computational parameter values and declared target images are already covered by the immutable definition version. Store the compiled definition/target description for provenance and checking visible inconsistencies, but do not claim to discover arbitrary edits to hidden scripts or installed software. Published-definition immutability remains an author/release contract.
 
-Use SHA-256 of the canonical **small descriptor** to name computation directories and associate records. This does not read or checksum input-file contents. Do not include current input sizes, input mtimes, job IDs, attempt IDs, or the main/gwflow/gwf release number merely to manufacture a new computation. Current file freshness is evaluated separately. An identity-format revision can change addressing when the representation itself is incompatible.
+As specified in [ADR 0005](adr/0005-descriptor-addressing.md), Phase 1 uses SHA-256 of the canonical **small descriptor** to name computation directories and associate records. This does not read or checksum input-file contents. Do not include current input sizes, input mtimes, job IDs, attempt IDs, or the main/gwflow/gwf release number merely to manufacture a new computation. Current file freshness is evaluated separately. An identity-format revision can change addressing when the representation itself is incompatible.
 
-Proposed path rules: project-contained file bindings use normalized project-relative paths; external bindings use normalized absolute paths. Keep the declared lexical path meaningful, rather than silently equating every symlink alias. Resolve symlink destinations separately when preparing container mounts. A different file binding is different input identity even when bytes happen to match; cross-path content deduplication is outside the first release.
+Implemented Phase 1 path rules: project-contained file bindings use normalized project-relative paths; external bindings use normalized absolute paths. Keep the declared lexical path meaningful, rather than silently equating every symlink alias. Resolve symlink destinations separately when preparing container mounts. A different file binding is different input identity even when bytes happen to match; cross-path content deduplication is outside the first release.
 
 A changed upstream computation identity invalidates its consumers. If an upstream computation keeps its identity but needs rerunning because of freshness, missing outputs, or job failure, dependency-triggered rerunning propagates through the planned graph.
 
@@ -67,7 +68,7 @@ A changed upstream computation identity invalidates its consumers. If an upstrea
 
 Definitions are ordinary importable Python objects supplied by installed packages. They declare a name/version, named inputs, named retained outputs, and a builder that generates internal targets with explicit dependencies and resource requests. The main definition composes subpipeline definitions and connects retained outputs to named downstream inputs. One definition can be bound to many datasets.
 
-Propose an initial file-oriented contract: finite declared file paths/lists and named data values; the whole target graph and output paths are known before submission. Directories containing runtime-discovered output sets should expose a declared manifest or known files initially. Cacheable work must have declared file results; external side effects without a reproducible file interface are not a first-release caching feature. Do not silently change gwf's always-run semantics for an outputless target by adding a receipt and calling it cacheable.
+Phase 1 implements the initial file-oriented contract: finite declared file paths/lists and named data values; the whole target graph and output paths are known before submission. Directories containing runtime-discovered output sets should expose a declared manifest or known files initially. Cacheable work must have declared file results; external side effects without a reproducible file interface are not a first-release caching feature. Do not silently change gwf's always-run semantics for an outputless target by adding a receipt and calling it cacheable.
 
 The following alignment example is a target-level illustration, not an implemented API:
 
@@ -93,16 +94,27 @@ Operational memory, walltime, partition, and account settings may change without
 | Image preparation | Resolve local/registry image declarations, fetch/cache published images, and return compute-visible local SIF paths. |
 | Project commands | Provide plan/run/status/cleanup entry points and coordinate project metadata/submission updates. |
 
-Keep gwf-specific APIs and release-sensitive graph manipulation inside the adapter. Do not monkeypatch globally installed gwf or require unchanged legacy workflows. The released graph/scheduling surfaces are source-supported integration candidates, but their combination remains an experiment. See the [status investigation](research-gwf-status.md).
+Keep gwf-specific APIs and release-sensitive graph manipulation inside the adapter. Do not monkeypatch globally installed gwf or require unchanged legacy workflows. Phase 0 demonstrated the released graph/scheduling surfaces together through disposable adapters; their maintained product integration remains Phase 2 work. See the [status investigation](research-gwf-status.md).
+
+Phase 2 will also compare visible computational declarations against saved
+definitions for the same bound computation and reject changes under the same
+published version, while allowing
+operational resources and provenance-only differences. This extends Phase 1
+checks across invocations without inspecting hidden code; see
+[ADR 0009](adr/0009-persisted-definition-consistency.md).
+Command text is compared literally and target renames require a new version;
+only representation ordering of mappings/graph relationships is normalized.
 
 ## Storage and retained evidence
 
-Illustrative layout, proposed rather than implemented:
+The work/result addresses below are implemented planning contracts (ADR 0005).
+Planning creates no directories. The `.gwflow` runtime layout remains illustrative
+and subject to Phase 2 decisions:
 
 ```text
 project/
   work/<prefix>/<computation-id>/           # reusable internal work between retries
-  results/<subpipeline>/<computation-id>/   # current retained result files
+  results/<prefix>/<computation-id>/        # current retained result files
   .gwflow/
     computations/<computation-id>/         # required plan and target evidence
     submissions/<submission-id>/           # composition, job journal, diagnostics
@@ -111,9 +123,31 @@ project/
     locks/                                 # short command/cache coordination
 ```
 
-Work and result roots can be configured to paths accessible from the submission host and relevant compute nodes. No particular filesystem product is prescribed. The implementation requires coherent path visibility, atomic same-filesystem publication of small metadata files, and reliable coordination between cooperating commands. On the selected BeeGFS deployment, cross-node `flock` and `lockf` did not coordinate, while atomic directory creation and atomic replacement did. Use fenced atomic-directory locks with owner/lease metadata and stale recovery there; filesystem capabilities must still be checked for any additional supported deployment. See the [Phase 0 E4 summary](phase0-results.md#e4--coordination-and-the-retry-gap).
+Phase 1 fixes work and result roots under the selected project; configurable
+roots remain a proposal, not an implemented option. Runtime paths must be
+accessible from the submission host and relevant compute nodes. No particular
+filesystem product is prescribed. The implementation requires coherent path
+visibility, atomic same-filesystem publication of small metadata files, and
+reliable coordination between cooperating commands. On the selected BeeGFS
+deployment, cross-node `flock` and `lockf` did not coordinate, while atomic
+directory creation and atomic replacement did. Phase 4's coordination baseline
+is fenced atomic-directory locks with owner/lease metadata and stale recovery.
+Phase 2 uses an exclusive atomic-directory command guard without automatic
+stale takeover, plus a durable pre-submission marker as described below.
+Filesystem capabilities must
+be checked for any additional supported deployment. See the
+[Phase 0 E4 summary](phase0-results.md#e4--coordination-and-the-retry-gap).
 
 The required computation manifest records the declared definition/input/output interface, target list, computational dependency links, and interpretation versions. Per-target evidence identifies the relevant execution attempt and its output paths/timestamps after the command and required output checks succeed. Job IDs and observations support scheduler checks and provenance. A small derived summary is optional and can be regenerated from intact underlying evidence.
+
+The accepted Phase 2 evidence structure consists of that required manifest,
+a durable per-target current-attempt selection record, and the selected attempt's
+success receipt. See [ADR 0010](adr/0010-current-attempt-evidence.md). These records
+do not replace scheduler observations or the freshness evaluation.
+
+Phase 2 retains per-attempt metadata and stdout/stderr logs without automatic
+expiration, including superseded attempts. Diagnostic history is separate from
+the current evidence eligible for reuse; it does not preserve prior payloads.
 
 Do not use a single Boolean completion marker as the sole authority. A saved command outcome is not proof of the job's eventual final Slurm state. Fresh scheduler queries take their normal precedence; a successfully queried absence of history differs from a query failure. Historical scheduler observations are provenance, not a new permanent failure/success override beyond gwf's behavior.
 
@@ -138,13 +172,65 @@ The essential distinction is between assessing a completed subpipeline and sched
 
 This deliberately confines virtual-file reasoning to the accepted completed-subpipeline boundary. It does not promise a general per-step cache capable of retaining deleted prerequisites during partial recovery. Missing producerless external inputs remain ordinary input errors; rerunning cannot recreate unavailable source data.
 
-The virtual evaluation, evidence validity checks, and propagation into real scheduling are the largest unproven part of the design. The branch example `x=9 → a=10` and `y=11 → b=12` must stay current, while a genuinely newer relevant input must invalidate its path. The experiments also cover equal/future timestamps, failure states, and missing evidence.
+Phase 0 demonstrated virtual evaluation, evidence validity checks, and propagation into real scheduling; maintained product integration and regression coverage remain Phase 2 work. The branch example `x=9 → a=10` and `y=11 → b=12` must stay current, while a genuinely newer relevant input must invalidate its path. The experiments also cover equal/future timestamps, failure states, and missing evidence.
+
+## Phase 2 command boundary
+
+The accepted next interface adds `run` and `run --dry-run` using a shared runtime
+evaluator. Existing `plan` remains free of runtime observations. The runtime
+preview emits JSON at computation and target level with stable decision/reason
+codes, relevant job IDs, and the evidence behind reuse, execution, or active-job
+attachment decisions. It is strictly read-only: no directories, manifests,
+attempts, tracking files, or jobs are created or updated. The result is an
+observation, not a reserved execution plan; actual submission reevaluates. A held
+guard or interruption marker yields a blocking diagnostic rather than definitive
+execution/reuse decisions. Pure `plan` remains available. These commands are not
+implemented yet. Broader status inspection remains Phase 4 work.
+
+Runtime commands write structured JSON to stdout and readable diagnostics to
+stderr. Exit 0 means a valid preview or successful submission and durable
+tracking publication, including a fully reused request; it does not mean jobs
+finished. Exit 2 denotes invalid definitions/bindings, unsupported images, or a
+visible version-contract violation. Exit 1 denotes scheduler/query failures,
+blocked/uncertain project state, or partial submission failure. Partial failure
+reports known accepted job IDs. Existing pure `plan` behavior is unchanged.
+
+Phase 2 is a controlled development milestone for sequential submissions with
+intact tracking, including attachment to known active jobs. Full concurrent and
+interrupted-submission recovery remains Phase 4. Phase 2 acquires an exclusive
+atomic-directory command guard and establishes a durable marker before submission
+can begin. It releases the guard after tracking is durably published, without
+waiting for compute jobs to finish. An uncertain interruption blocks later
+submission until an operator reconciles scheduler jobs and tracking; there is no
+automatic stale-guard takeover. Manual recovery requires the affected submission
+to be quiescent: persist enough intent and scheduler-visible identification to
+locate its jobs, establish that none remain queued/running, restore verifiable
+job associations, and invalidate unverifiable completion evidence before
+explicitly clearing the block. If ownership or remaining activity cannot be
+established, keep the block. Surviving outputs never fabricate success. Live
+reconciliation that preserves affected active jobs remains Phase 4 work.
+
+Before replacement, inspect affected owned computations and consumers across
+the selected project, including active consumers absent from the current
+composition. Use retained graphs and tracking to reject conflicting replacement
+before submission. Unrelated work and attachment to equivalent active jobs
+remain permitted. Unknown ownership/activity blocks the operation; Phase 2 does
+not cancel the conflicting jobs. See the [preparation record](phase2-planning.md).
+This protects against replacing files needed by already-active consumers; it
+does not prevent ordinary submission of a producer and its new downstream jobs
+together under scheduler dependencies.
+
+Phase 2 execution is host-only. Runtime requests reject any plan containing an
+image-declaring target before submitting any jobs; mixed plans are not partially
+submitted and images are never silently ignored. Pure `plan` continues to inspect
+image declarations. Per-target image execution remains Phase 3 work and is
+required for the first release.
 
 ## Whole-subpipeline ordering and submission
 
 For each upstream/downstream subpipeline dependency, propose explicit scheduler edges from the downstream entry targets to every required upstream terminal target that remains in the execution graph. This covers parallel endings without a collector job. A previously completed/reusable producer contributes retained inputs instead of jobs.
 
-Prefer scheduler-only edges over pretending every upstream output or receipt is a computational input. Update forward/reverse graph links, endpoints, and validation consistently. The extra ordering must not alter the timestamp comparison of unrelated file inputs. This adapter behavior needs a focused test against the pinned gwf release.
+Prefer scheduler-only edges over pretending every upstream output or receipt is a computational input. Update forward/reverse graph links, endpoints, and validation consistently. The extra ordering must not alter the timestamp comparison of unrelated file inputs. Phase 0 tested this behavior against gwf 2.1.1 and on the selected Slurm configuration; Phase 2 must preserve it through maintained product tests.
 
 The submitting process plans, prepares necessary images, performs a final status/reuse evaluation under project coordination, journals and submits the full executable graph, persists tracking, and exits. Image preparation must cover the final execution set: if reevaluation discovers additional work, prepare its missing images and reevaluate before submission. Image acquisition can lengthen the initial command; no image-preparation job is submitted. Equivalent active work is reused by retaining its tracked job IDs and attaching new consumers to those jobs.
 
@@ -152,7 +238,7 @@ The submitting process plans, prepares necessary images, performs a final status
 
 Serialize conflicting project planning/submission updates with a short-lived cooperative lock; do not hold it for the duration of compute jobs. On the selected BeeGFS filesystem this is an atomic-directory lease, not `flock`/`lockf`; the production protocol needs owner identity, expiry/heartbeat bounds, stale recovery, and fencing before publication. Coordinate image cache entries separately. Each submitted target has a stable project/computation/target name and an attempt token; journal intended submission and immediately record returned job IDs.
 
-If a submission dies after Slurm accepted a job but before its ID was saved, reconcile owned scheduler jobs by their unambiguous names/tokens before submitting a duplicate. The exact Slurm tagging/reconciliation mechanism must be demonstrated. Missing tracking does not justify blindly duplicating active jobs. Scheduler query errors remain errors, rather than being treated as missing files or empty history.
+If a submission dies after Slurm accepted a job but before its ID was saved, reconcile owned scheduler jobs by their unambiguous names/tokens before submitting a duplicate. Phase 0 demonstrated scheduler tagging/reconciliation on the selected setup; the production protocol remains Phase 4 work. Missing tracking does not justify blindly duplicating active jobs. Scheduler query errors remain errors, rather than being treated as missing files or empty history.
 
 When an upstream failed job is replaced, stock gwf can leave an existing queued consumer attached to the old job ID. On the selected Slurm configuration, `DependencyParameters=kill_invalid_depend` automatically cancels that consumer; ordinary gwf retry then submitted the replacement dependency chain successfully. The adapter should use that behavior when configured and observed. For a supported configuration where an obsolete consumer remains queued, identify affected **gwflow-owned queued consumers**, use the demonstrated controller-side PENDING-state filter to cancel only obsolete queued instances, and resubmit them with the new dependency IDs. Do not cancel unrelated or already-running work.
 

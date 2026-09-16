@@ -1,8 +1,9 @@
 # Phase 0 results
 
 The bounded feasibility gates are complete on the selected Linux, Slurm,
-Apptainer, and BeeGFS environment. Phase 1 is unblocked; product implementation
-has not begun. The [architecture](architecture-proposal.md) and
+Apptainer, and BeeGFS environment. These are historical Phase 0 findings.
+Phase 1 planning is now implemented and complete; Phase 2 execution is specified
+in [issue #29](https://github.com/micknudsen/gwflow/issues/29) and awaits implementation. The [architecture](architecture-proposal.md) and
 [implementation plan](implementation-plan.md) remain the baseline.
 
 ## Environment and reproducibility
@@ -90,5 +91,7 @@ retained privately; the portable implementation findings are summarized here.
 These are implementation refinements within the required behavior; they add no
 controller, orchestration/finalizer/preparation job, content scan, or weakened
 scheduler semantics.  Phase 0 is complete for the selected configuration.
-Production definitions, schemas, durable coordination, maintained adapters,
-real alignment-tool images, and cleanup remain work for Phases 1–4.
+Phase 1 has since implemented production definitions, planning schemas, identity,
+and graph inspection. Runtime evidence schemas, maintained execution adapters,
+durable coordination, real alignment-tool images, and cleanup remain work for
+Phases 2–4. See the [current preparation record](phase2-planning.md).

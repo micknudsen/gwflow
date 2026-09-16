@@ -3,8 +3,8 @@
 This document explains the role and expected contents of durable completion
 evidence. The [architecture](architecture-proposal.md) supplies the broader
 design, and [Phase 0](phase0-results.md) validates the core failure and attempt
-windows on the selected configuration. Exact product schemas and maintained
-integration remain Phase 1–2 work.
+windows on the selected configuration. Phase 1 provides the [planning manifest schema](manifest-schema.md). Runtime
+evidence schemas and maintained execution integration remain Phase 2 work.
 
 ## Purpose
 
@@ -22,21 +22,40 @@ Output files alone do not establish that all required work succeeded. Conversely
 | Required internal work | Target identities and their dependency relationships, so a partial branch is not mistaken for whole-subpipeline completion. |
 | Execution evidence | Attempt/job identifiers and evidence that the corresponding command and required checks reached their success point. Old attempt evidence must not certify a newer failed attempt. |
 | Scheduler observations | The status observed for a tracked job and when it was observed, if retained for provenance. A saved observation is not automatically the job's current state or a permanent override of gwf's unknown-status fallback. |
-| Freshness information | The architecture proposes recording per-target output timestamps and dependency relationships to evaluate the agreed rules after internal outputs are deleted. This needs feasibility testing; input-content checksums and strict input-metadata-snapshot equality are not introduced. |
+| Freshness information | Phase 0 demonstrated per-target output timestamps and dependency relationships for evaluating the agreed rules after internal outputs are deleted. The production record format remains unresolved; input-content checksums and strict input-metadata-snapshot equality are not introduced. |
 
-This could be a small retained manifest plus records for individual targets, for example under a proposed `.gwflow/` metadata directory. The directory and format remain design choices. A single `complete: true` flag cannot provide all of this information.
+Phase 2 has selected three distinct required records: the computation manifest,
+a durable per-target record selecting the current attempt, and that attempt's
+success receipt. These records are evaluated alongside scheduler status and
+freshness; no Boolean completion flag is the sole authority. The directory,
+exact formats, and compatibility details remain design choices. See
+[ADR 0010](adr/0010-current-attempt-evidence.md).
 
 ## How it could be produced
 
 The submission command can record the expected plan and job IDs. Existing compute jobs could record their own command outcomes, with required output checks and durable evidence publication succeeding before the job exits successfully. Failure of either must fail the job so Slurm's `afterok` dependencies remain blocked. Later submission, status, or cleanup commands can evaluate the records together with gwf's backend states and current result/freshness checks. No additional orchestration job or persistent controller is implied by this proposal.
 
-These are separate types of information: a saved plan says what was intended; a command record says what that command reached; a scheduler observation says what gwf observed at a particular time; subpipeline completion is a derived conclusion. In particular, command success must not override a known Slurm failure. The evidence protocol and gwf graph integration have not been implemented or demonstrated.
+These are separate types of information: a saved plan says what was intended; a command record says what that command reached; a scheduler observation says what gwf observed at a particular time; subpipeline completion is a derived conclusion. In particular, command success must not override a known Slurm failure. Phase 0 demonstrated disposable evidence and graph-integration mechanisms, including live failure and attempt-fencing behavior. A maintained product protocol and adapter are not yet implemented.
 
 ## Concrete example
 
 Suppose `mapping` version `1.2` uses named input files and a dataset identifier, runs alignment and sorting, and retains an alignment file and its index. The alignment/sorting intermediates are later cleaned.
 
 On a new submission, gwflow would use retained metadata to identify the same definition/input bindings and the work required to produce that result. It would still consult relevant tracked-job states, verify the retained files, and apply the agreed freshness/provenance checks. If those checks permit reuse, it could omit the internal targets that would otherwise rerun merely because their intermediate files are gone. This is the intended behavior, not proof that the proposed mechanism already works.
+
+## Accepted Phase 2 history policy
+
+Retain per-attempt metadata and stdout/stderr logs through Phase 2 without
+automatic expiration, including attempts superseded by retries. Keep diagnostic
+history separate from the current attempt evidence eligible for reuse. This
+does not retain historical result payloads or make an old receipt eligible for a
+replacement attempt. Exact record fields, storage, and compatibility rules remain
+to be settled in [Phase 2 preparation](phase2-planning.md).
+
+Logs, superseded receipts, and derived summaries are diagnostic records; their
+loss alone does not trigger recomputation. The selected current-attempt record
+and its required receipt are indispensable evidence. A surviving historical
+receipt cannot nominate itself as current when that selection record is lost.
 
 ## Lost or missing records
 
@@ -48,4 +67,12 @@ Missing required evidence or retained outputs causes automatic recovery or recom
 
 Known queued/running equivalent targets retain gwf's active-job precedence and must not be duplicated simply because their outputs/records are not yet present. The original exception also remains: missing disposable intermediates do not cause a rerun of an otherwise reusable completed subpipeline. Missing producerless external inputs are normal input errors, not data that gwflow can invent.
 
-An optional derived status summary can be reconstructed from complete underlying required evidence; it is not itself a required completion record. Partial retries and virtual freshness after cleanup were exercised by the Phase 0 gates in the [implementation plan](implementation-plan.md). Exact product schemas and maintained integration remain Phase 1–2 work.
+Lost authoritative job associations and uncertain submission acceptance are not
+ordinary evidence loss. Receipts cannot establish the absence of an untracked
+newer job. Phase 2 blocks submission pending manual reconciliation, which
+requires quiescence of the affected submission, restoration of verifiable job
+associations, and invalidation of unverifiable evidence. Unknown ownership or
+activity keeps the block. Ordinary missing-evidence recovery remains automatic
+when job tracking is trustworthy and scheduler observations permit it.
+
+An optional derived status summary can be reconstructed from complete underlying required evidence; it is not itself a required completion record. Partial retries and virtual freshness after cleanup were exercised by the Phase 0 gates in the [implementation plan](implementation-plan.md). The planning schema is implemented; runtime evidence schemas and maintained execution integration remain Phase 2 work.
