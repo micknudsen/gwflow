@@ -5,9 +5,10 @@ import sys
 from . import PlanError, load, manifest, plan
 from .runtime import preview
 from .runtime_records import execution_manifest
+from .submission import submit
 
 
-def main(argv=None):
+def main(argv=None, *, scheduler=None):
     parser = argparse.ArgumentParser(prog="python -m gwflow")
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser("plan", help="describe intended work as JSON")
@@ -28,13 +29,11 @@ def main(argv=None):
             result = [execution_manifest(result, c["identity"]) for c in result["computations"]]
         if args.command == "run" and args.dry_run:
             result = preview(result)
+        elif args.command == "run":
+            result = submit(result, scheduler=scheduler)
     except (PlanError, json.JSONDecodeError) as exc:
         print(f"gwflow: {exc}", file=sys.stderr)
         return 2
-    if args.command == "run":
-        if not args.dry_run:
-            print("gwflow: runtime submission is not available until the static scheduler adapter is installed", file=sys.stderr)
-            return 1
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.command == "run" and result.get("outcome") in {"blocked", "error"}:
         print(f"gwflow: {result['diagnostic']}", file=sys.stderr)

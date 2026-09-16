@@ -10,6 +10,7 @@ from .planner import PlanError
 from .runtime_records import UnsupportedTracking
 from .evaluator import evaluate
 from .runtime_errors import RuntimeFailure
+from .coordination import blocking_reason
 
 
 RUNTIME_PREVIEW_REVISION = 1
@@ -31,6 +32,15 @@ def host_only(plan: Mapping) -> None:
 def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
+    blocked = blocking_reason(plan["project"])
+    if blocked:
+        code, message = blocked
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "reason": {"code": code, "message": message}, "diagnostic": message, "computations": []}
+    return evaluated_preview(plan, statuses=statuses, job_ids=job_ids)
+
+
+def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
+    """Shared evaluator report; caller must check coordination or hold the guard."""
     try:
         evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
     except UnsupportedTracking as exc:

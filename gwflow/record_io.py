@@ -61,3 +61,17 @@ def read_json(path):
 
     return json.loads(Path(path).read_text(encoding="utf-8"),
                       object_pairs_hook=unique_object, parse_constant=invalid_constant)
+
+
+def durable_unlink(path):
+    """Remove one known record and synchronize its containing directory."""
+    path = Path(path)
+    path.unlink()
+    _sync_directory(path.parent)
+
+
+def durable_rmdir(path):
+    """Remove one empty coordination directory and synchronize its parent."""
+    path = Path(path)
+    path.rmdir()
+    _sync_directory(path.parent)
