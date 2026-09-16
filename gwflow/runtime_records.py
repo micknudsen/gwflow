@@ -13,7 +13,7 @@ import re
 
 from .planner import PlanError
 from .record_io import publish_json, read_json
-from .runtime_declarations import normalized, validate as validate_declaration
+from .runtime_declarations import canonical as _canonical, normalized, validate as validate_declaration
 
 
 RUNTIME_RECORD_REVISION = 1
@@ -31,10 +31,6 @@ def _fail(detail):
     raise PlanError(f"runtime record: {detail}")
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True, allow_nan=False)
-
-
 def computational_declaration(computation):
     """Return the canonical, visible declaration protected by ADR 0009.
 
@@ -49,7 +45,7 @@ def computational_declaration(computation):
                 "command": target["command"],
                 "inputs": deepcopy(target["inputs"]),
                 "outputs": deepcopy(target["outputs"]),
-                "dependencies": sorted(target["dependencies"]),
+                "dependencies": deepcopy(target["dependencies"]),
                 "output_kinds": deepcopy(target["output_kinds"]),
                 "always_run": target["always_run"],
                 "environment": deepcopy(target["environment"]),
@@ -62,16 +58,16 @@ def computational_declaration(computation):
             "input_interface": deepcopy(computation["input_interface"]),
             "output_interface": deepcopy(computation["output_interface"]),
             "computational_parameters": deepcopy(computation["computational_parameters"]),
-            "targets": sorted(targets, key=lambda target: target["name"]),
-            "computational_edges": sorted(edges, key=_canonical),
-            "entry_targets": sorted(computation["entry_targets"]),
-            "terminal_targets": sorted(computation["terminal_targets"]),
-            "internal_outputs": sorted(computation["internal_outputs"]),
-            "whole_producer_dependencies": sorted(computation["whole_producer_dependencies"]),
+            "targets": targets,
+            "computational_edges": edges,
+            "entry_targets": deepcopy(computation["entry_targets"]),
+            "terminal_targets": deepcopy(computation["terminal_targets"]),
+            "internal_outputs": deepcopy(computation["internal_outputs"]),
+            "whole_producer_dependencies": deepcopy(computation["whole_producer_dependencies"]),
         }
     except (KeyError, TypeError) as exc:
         _fail("cannot derive computational declaration from planned computation")
-    return json.loads(_canonical(projection))
+    return json.loads(_canonical(normalized(projection)))
 
 
 def execution_manifest(plan, identity):
