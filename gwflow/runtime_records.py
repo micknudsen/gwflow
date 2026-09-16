@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 
 from .planner import PlanError
 from .record_io import publish_json, read_json
@@ -352,9 +353,9 @@ def _has_owned_locations(project):
         if not root.exists():
             continue
         for prefix in root.iterdir():
-            if re.fullmatch(r"[0-9a-f]{2}", prefix.name):
+            if re.fullmatch(r"[0-9a-f]{2}", prefix.name) and stat.S_ISDIR(prefix.stat().st_mode):
                 for slot in prefix.iterdir():
-                    if re.fullmatch(r"[0-9a-f]{64}", slot.name) and slot.name.startswith(prefix.name):
+                    if re.fullmatch(r"[0-9a-f]{64}", slot.name) and slot.name.startswith(prefix.name) and stat.S_ISDIR(slot.stat().st_mode):
                         return True
     return False
 

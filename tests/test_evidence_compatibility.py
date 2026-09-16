@@ -245,6 +245,9 @@ def test_losing_entire_runtime_metadata_still_blocks_with_owned_locations(tmp_pa
 def test_unrelated_user_directories_do_not_make_a_fresh_project_uncertain(tmp_path):
     (tmp_path / "work" / "notes").mkdir(parents=True)
     (tmp_path / "results" / "reports").mkdir(parents=True)
+    (tmp_path / "work" / "ab").write_text("unrelated input file")
+    (tmp_path / "results" / "ab").mkdir()
+    (tmp_path / "results" / "ab" / ("ab" + "0" * 62)).write_text("unrelated regular file, not a slot directory")
     (tmp_path / "reads.txt").write_text("source")
     result = runtime_cli(tmp_path, "--dry-run", "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert result.returncode == 0, result.stderr
