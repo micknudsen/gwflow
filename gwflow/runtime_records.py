@@ -5,13 +5,15 @@ visible computational declaration used to detect a changed published definition
 for the *same* bound computation in a later runtime command.
 """
 from copy import deepcopy
+import hashlib
 import json
 import os
 from pathlib import Path
-import tempfile
+import re
 
-from .identity import address
 from .planner import PlanError
+from .record_io import publish_json, read_json
+from .runtime_declarations import canonical as _canonical, normalized, validate as validate_declaration
 
 
 RUNTIME_RECORD_REVISION = 1
@@ -29,10 +31,6 @@ def _fail(detail):
     raise PlanError(f"runtime record: {detail}")
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-
-
 def computational_declaration(computation):
     """Return the canonical, visible declaration protected by ADR 0009.
 
@@ -47,7 +45,7 @@ def computational_declaration(computation):
                 "command": target["command"],
                 "inputs": deepcopy(target["inputs"]),
                 "outputs": deepcopy(target["outputs"]),
-                "dependencies": sorted(target["dependencies"]),
+                "dependencies": deepcopy(target["dependencies"]),
                 "output_kinds": deepcopy(target["output_kinds"]),
                 "always_run": target["always_run"],
                 "environment": deepcopy(target["environment"]),
@@ -60,16 +58,16 @@ def computational_declaration(computation):
             "input_interface": deepcopy(computation["input_interface"]),
             "output_interface": deepcopy(computation["output_interface"]),
             "computational_parameters": deepcopy(computation["computational_parameters"]),
-            "targets": sorted(targets, key=lambda target: target["name"]),
-            "computational_edges": sorted(edges, key=_canonical),
-            "entry_targets": sorted(computation["entry_targets"]),
-            "terminal_targets": sorted(computation["terminal_targets"]),
-            "internal_outputs": sorted(computation["internal_outputs"]),
-            "whole_producer_dependencies": sorted(computation["whole_producer_dependencies"]),
+            "targets": targets,
+            "computational_edges": edges,
+            "entry_targets": deepcopy(computation["entry_targets"]),
+            "terminal_targets": deepcopy(computation["terminal_targets"]),
+            "internal_outputs": deepcopy(computation["internal_outputs"]),
+            "whole_producer_dependencies": deepcopy(computation["whole_producer_dependencies"]),
         }
     except (KeyError, TypeError) as exc:
         _fail("cannot derive computational declaration from planned computation")
-    return json.loads(_canonical(projection))
+    return json.loads(_canonical(normalized(projection)))
 
 
 def execution_manifest(plan, identity):
@@ -85,49 +83,13 @@ def execution_manifest(plan, identity):
         }
     except (KeyError, StopIteration, TypeError) as exc:
         _fail(f"missing computation for {identity!r}")
-    validate_execution_manifest(record)
+    validate_execution_manifest(record, project=plan["project"])
     return record
 
 
-def validate_execution_manifest(record):
+def validate_execution_manifest(record, *, project=None):
     """Validate a retained declaration without interpreting execution success."""
-    if type(record) is not dict or set(record) != {"kind", "record_revision", "identity", "descriptor", "computational_declaration"}:
-        _fail("execution manifest has unexpected fields")
-    if record["kind"] != "execution-computation" or record["record_revision"] != RUNTIME_RECORD_REVISION:
-        _fail("unsupported execution-manifest revision")
-    descriptor = record["descriptor"]
-    if type(descriptor) is not dict or set(descriptor) != {"identity_version", "definition", "bindings"}:
-        _fail("invalid identity descriptor")
-    if descriptor["identity_version"] != 1 or type(descriptor["definition"]) is not dict:
-        _fail("unsupported identity descriptor")
-    try:
-        expected, _ = address(descriptor["definition"]["name"], descriptor["definition"]["version"], descriptor["bindings"])
-    except (KeyError, TypeError, ValueError) as exc:
-        _fail("invalid identity descriptor")
-    if record["identity"] != expected:
-        _fail("identity does not match descriptor")
-    projection = record["computational_declaration"]
-    if type(projection) is not dict:
-        _fail("invalid computational declaration")
-    definition = projection.get("definition")
-    if type(definition) is not dict or definition != descriptor["definition"]:
-        _fail("declaration definition does not match descriptor")
-    required = {"definition", "input_interface", "output_interface", "computational_parameters", "targets", "computational_edges", "entry_targets", "terminal_targets", "internal_outputs", "whole_producer_dependencies"}
-    if set(projection) != required or type(projection["targets"]) is not list:
-        _fail("invalid computational declaration")
-    target_fields = {"name", "command", "inputs", "outputs", "dependencies", "output_kinds", "always_run", "environment"}
-    if any(type(target) is not dict or set(target) != target_fields for target in projection["targets"]):
-        _fail("invalid target declaration")
-    names = [target["name"] for target in projection["targets"]]
-    if len(names) != len(projection["targets"]) or names != sorted(names) or len(set(names)) != len(names):
-        _fail("targets must have sorted distinct names")
-    for target in projection["targets"]:
-        if type(target["name"]) is not str or not target["name"] or type(target["command"]) is not str or not target["command"]:
-            _fail("invalid target declaration")
-        if any(type(target[key]) is not list or any(type(item) is not str for item in target[key]) for key in ("inputs", "outputs", "dependencies")):
-            _fail("invalid target declaration")
-        if type(target["output_kinds"]) is not dict or type(target["always_run"]) is not bool or type(target["environment"]) is not dict:
-            _fail("invalid target declaration")
+    validate_declaration(record, project=project)
 
 
 def _identity(value, label):
@@ -140,9 +102,15 @@ def _token(value, label):
         _fail(f"invalid {label}")
 
 
+def _path(value, label):
+    _token(value, label)
+    if not os.path.isabs(value) or os.path.normpath(value) != value:
+        _fail(f"invalid {label}: expected normalized absolute path")
+
+
 def validate_runtime_record(record):
     """Validate any revision-1 record used by the Phase 2 runtime protocol."""
-    if type(record) is not dict or record.get("record_revision") != RUNTIME_RECORD_REVISION:
+    if type(record) is not dict or type(record.get("record_revision")) is not int or record["record_revision"] != RUNTIME_RECORD_REVISION:
         _fail("unsupported runtime-record revision")
     kind = record.get("kind")
     if kind == "execution-computation":
@@ -157,6 +125,9 @@ def validate_runtime_record(record):
         for output in record["outputs"]:
             if type(output) is not dict or set(output) != {"path", "mtime_ns"} or type(output["path"]) is not str or type(output["mtime_ns"]) is not int or isinstance(output["mtime_ns"], bool):
                 _fail("invalid success receipt output")
+            _path(output["path"], "receipt output")
+        if len({output["path"] for output in record["outputs"]}) != len(record["outputs"]):
+            _fail("duplicate success receipt output")
     elif kind == "job-association":
         if set(record) != common | {"job_id"}:
             _fail("job association has unexpected fields")
@@ -164,8 +135,8 @@ def validate_runtime_record(record):
     elif kind == "attempt-diagnostic":
         if set(record) != common | {"stdout", "stderr"}:
             _fail("attempt diagnostic has unexpected fields")
-        _token(record["stdout"], "stdout path")
-        _token(record["stderr"], "stderr path")
+        _path(record["stdout"], "stdout path")
+        _path(record["stderr"], "stderr path")
     elif kind == "submission-intent":
         if set(record) != {"kind", "record_revision", "submission", "targets"} or type(record["targets"]) is not list:
             _fail("submission intent has unexpected fields")
@@ -217,8 +188,7 @@ def submission_intent(submission, targets):
 
 def execution_manifest_path(project, identity):
     """Return the maintained path for a bound computation's retained declaration."""
-    if type(identity) is not str or len(identity) != 64:
-        _fail("invalid computation identity")
+    _identity(identity, "runtime")
     return Path(project) / ".gwflow" / "runtime" / f"v{RUNTIME_RECORD_REVISION}" / "computations" / identity[:2] / identity / "manifest.json"
 
 
@@ -226,64 +196,60 @@ def computation_directory(project, identity):
     return execution_manifest_path(project, identity).parent
 
 
+def _component(value):
+    _token(value, "record path component")
+    if re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}", value):
+        return value
+    # The reserved prefix prevents an encoded name aliasing a literal name.
+    return "~" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def current_attempt_path(project, identity, target):
-    return computation_directory(project, identity) / "targets" / target / "current.json"
+    return computation_directory(project, identity) / "targets" / _component(target) / "current.json"
 
 
 def receipt_path(project, identity, target, attempt):
-    return computation_directory(project, identity) / "targets" / target / "attempts" / attempt / "receipt.json"
+    return current_attempt_path(project, identity, target).parent / "attempts" / _component(attempt) / "receipt.json"
 
 
 def write_runtime_record(path, record):
-    """Atomically publish one validated retained record at its selected path."""
+    """Durably publish one validated retained record at its selected path."""
     validate_runtime_record(record)
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=".record-", delete=False) as handle:
-        json.dump(record, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-        handle.write("\n")
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
-    return path
+    return publish_json(path, record)
 
 
 def read_runtime_record(path):
     """Read and validate a required runtime record, returning ``None`` if absent."""
     path = Path(path)
-    if not path.exists():
-        return None
     try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        record = read_json(path)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
         _fail(f"cannot read {path}: {exc}")
     validate_runtime_record(record)
     return record
 
 
 def write_execution_manifest(project, record):
-    """Atomically publish a validated declaration when submission creates it."""
-    validate_execution_manifest(record)
-    path = execution_manifest_path(project, record["identity"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=".manifest-", delete=False) as handle:
-        json.dump(record, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-        handle.write("\n")
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
-    return path
+    """Durably publish a validated declaration when submission creates it."""
+    validate_execution_manifest(record, project=project)
+    return publish_json(execution_manifest_path(project, record["identity"]), record)
 
 
 def read_execution_manifest(project, identity):
     """Load a retained declaration, or return ``None`` when none was published."""
     path = execution_manifest_path(project, identity)
-    if not path.exists():
-        return None
     try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        record = read_json(path)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
         raise UnsupportedEvidence(f"runtime record: unreadable execution manifest for {identity}: {exc}") from exc
     try:
-        validate_execution_manifest(record)
+        validate_execution_manifest(record, project=project)
+        if record["identity"] != identity:
+            _fail("execution manifest belongs to a different computation")
     except PlanError as exc:
         raise UnsupportedEvidence(f"runtime record: unsupported execution manifest for {identity}: {exc}") from exc
     return record
@@ -302,12 +268,12 @@ def validate_tracking(record):
 
 def read_tracking(project):
     path = tracking_path(project)
-    if not path.exists():
-        return None
     try:
-        record = json.loads(path.read_text(encoding="utf-8"))
+        record = read_json(path)
         validate_tracking(record)
-    except (OSError, json.JSONDecodeError, PlanError) as exc:
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, PlanError) as exc:
         if isinstance(exc, UnsupportedTracking):
             raise
         raise UnsupportedTracking(f"runtime record: unreadable job tracking: {exc}") from exc
@@ -317,8 +283,10 @@ def read_tracking(project):
 def require_consistent_definition(saved, computation):
     """Reject a visible changed declaration under the same bound computation."""
     validate_execution_manifest(saved)
+    if saved["identity"] != computation["identity"]:
+        return
     current = computational_declaration(computation)
-    if saved["computational_declaration"] != current:
+    if _canonical(normalized(saved["computational_declaration"])) != _canonical(current):
         name = current["definition"]["name"]
         version = current["definition"]["version"]
         _fail(f"visible computational declaration changed for {name}@{version}; publish a new subpipeline version")

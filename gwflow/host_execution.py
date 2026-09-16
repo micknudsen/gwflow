@@ -20,7 +20,7 @@ class ExecutionResult:
 
 
 def _paths(project, computation, target, attempt):
-    root = current_attempt_path(project, computation["identity"], target["name"]).parent / "attempts" / attempt
+    root = receipt_path(project, computation["identity"], target["name"], attempt).parent
     return root / "stdout.log", root / "stderr.log"
 
 
