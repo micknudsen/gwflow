@@ -191,8 +191,9 @@ The product frontier is closed and shared understanding is confirmed. The
 accepted specification is published as [#29](https://github.com/micknudsen/gwflow/issues/29)
 with the canonical `ready-for-agent` label: triage is complete, and the parent
 provides context for separate implementation tickets. Phase 2 runtime
-implementation has not started. Documentation updates remain local on
-`docs/phase2-preparation` until delivered through a pull request.
+implementation has not started. Documentation and implementation changes are
+delivered through pull requests; each implementation ticket remains an
+independently testable tracer bullet.
 
 ## Specification presentation and testing seams
 
