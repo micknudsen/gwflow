@@ -6,6 +6,7 @@ from test_planner import runtime_cli
 
 
 def prepared(tmp_path):
+    (tmp_path / "reads.txt").write_text("input\n")
     result = plan(load("examples.one_file:main"), {"source": "reads.txt"}, project=tmp_path)
     record = execution_manifest(result, result["computations"][0]["identity"])
     write_execution_manifest(tmp_path, record)
