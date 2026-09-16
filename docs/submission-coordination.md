@@ -63,6 +63,14 @@ Pure `plan` ignores these records and remains available. Only the command that
 still owns a guard may release it; failed or interrupted guards are not silently
 reclaimed.
 
+Preview checks coordination again after evaluating. It also compares the set
+of retained, uniquely named submission-intent directories before and after its
+observations. If a submission completed entirely during evaluation, preview
+returns `runtime-observation-changed` with no decisions and asks for a fresh
+observation. This uses Phase 2's retained history; it adds no lease, reservation,
+automatic retry, or runtime writer. Inputs can still change after observation,
+so submission must always reevaluate under its own guard.
+
 ## Portable interruption demo
 
 ```sh

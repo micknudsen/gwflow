@@ -10,7 +10,7 @@ from .planner import PlanError
 from .runtime_records import UnsupportedTracking
 from .evaluator import evaluate
 from .runtime_errors import RuntimeFailure
-from .coordination import blocking_reason
+from .coordination import blocking_reason, observation_generation
 
 
 RUNTIME_PREVIEW_REVISION = 1
@@ -32,11 +32,30 @@ def host_only(plan: Mapping) -> None:
 def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
-    blocked = blocking_reason(plan["project"])
-    if blocked:
-        code, message = blocked
-        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": "blocked", "reason": {"code": code, "message": message}, "diagnostic": message, "computations": []}
-    return evaluated_preview(plan, statuses=statuses, job_ids=job_ids)
+    def problem(code, message, outcome="blocked"):
+        return {"kind": "runtime-preview", "runtime_preview_revision": RUNTIME_PREVIEW_REVISION, "project": plan["project"], "outcome": outcome, "reason": {"code": code, "message": message}, "diagnostic": message, "computations": []}
+
+    try:
+        generation = observation_generation(plan["project"])
+        blocked = blocking_reason(plan["project"])
+        if blocked:
+            return problem(*blocked)
+        failure = None
+        try:
+            report = evaluated_preview(plan, statuses=statuses, job_ids=job_ids)
+        except PlanError as exc:
+            failure = exc
+        changed = generation != observation_generation(plan["project"])
+        blocked = blocking_reason(plan["project"])
+        if blocked:
+            return problem(*blocked)
+        if changed:
+            return problem("runtime-observation-changed", "a submission overlapped runtime observations; retry the read-only preview")
+        if failure is not None:
+            raise failure
+        return report
+    except OSError as exc:
+        return problem("filesystem-error", str(exc), "error")
 
 
 def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:

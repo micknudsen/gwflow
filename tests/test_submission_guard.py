@@ -274,3 +274,63 @@ def test_tracking_sync_failure_after_acceptance_cannot_release_guard(tmp_path, c
     assert "tracking directory sync failure" in diagnostic
     assert (tmp_path / ".gwflow" / "command-guard").is_dir()
     assert (tmp_path / ".gwflow" / "submission.json").is_file()
+
+
+def test_all_reused_submission_keeps_selections_receipts_and_tracking(tmp_path, capsys):
+    planned = prepare_fixture(tmp_path)
+    identity = planned["computations"][0]["identity"]
+    before = read_tracking(tmp_path)
+    root = current_attempt_path(tmp_path, identity, "a").parent.parent
+    history = {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+
+    class ExpiredHistory(RecordingScheduler):
+        def observe(self, job_ids):
+            return {job_id: "unknown" for job_id in job_ids}
+
+    scheduler = ExpiredHistory()
+    code, report, diagnostic = command(tmp_path, scheduler, capsys)
+    assert code == 0, diagnostic
+    assert report["computations"][0]["decision"] == "reuse"
+    assert report["accepted_job_ids"] == []
+    assert scheduler.jobs == []
+    assert read_tracking(tmp_path) == before
+    assert history == {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+    assert not (tmp_path / ".gwflow" / "command-guard").exists()
+
+
+def test_pure_plan_remains_available_with_an_interrupted_submission(tmp_path):
+    metadata = tmp_path / ".gwflow"
+    metadata.mkdir()
+    (metadata / "command-guard").mkdir()
+    (metadata / "submission.json").write_text("interrupted")
+    result = subprocess.run([sys.executable, "-m", "gwflow", "plan", "examples.one_file:main", "--project", str(tmp_path), "--bindings", '{"source":"missing.txt"}'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["computations"]
+    assert not (metadata / "runtime").exists()
+
+
+@pytest.mark.parametrize("overlap", ["before-acceptance", "success"])
+def test_preview_suppresses_decisions_if_submission_overlaps_its_observations(tmp_path, capsys, monkeypatch, overlap):
+    (tmp_path / "reads.txt").write_text("source")
+    (tmp_path / "other.txt").write_text("other")
+    stat = os.stat
+    interleaved = False
+
+    def observe_with_interleaving(path, *args, **kwargs):
+        nonlocal interleaved
+        if not interleaved and path == tmp_path / "reads.txt":
+            interleaved = True
+            child = subprocess.run([sys.executable, "-m", "examples.submission_guard_demo", "--project", str(tmp_path), "--worker", overlap], capture_output=True, text=True, timeout=30)
+            assert child.returncode == (91 if overlap == "before-acceptance" else 0), child.stdout + child.stderr
+        return stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", observe_with_interleaving)
+    code = main(["run", "--dry-run", "examples.runtime_evaluation:main", "--project", str(tmp_path),
+                 "--bindings", '{"source":"reads.txt","other":"other.txt"}'])
+    captured = capsys.readouterr()
+    assert interleaved
+    assert code == 1, captured.out + captured.err
+    report = json.loads(captured.out)
+    assert report["outcome"] == "blocked"
+    assert report["computations"] == []
+    assert report["reason"]["code"] == ("submission-uncertain" if overlap == "before-acceptance" else "runtime-observation-changed")

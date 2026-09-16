@@ -44,7 +44,7 @@ class FixtureScheduler:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, help="new directory; defaults to a unique temporary directory")
-    parser.add_argument("--worker", choices=("before-acceptance", "accepted-before-id", "partial-graph", "hold"), help=argparse.SUPPRESS)
+    parser.add_argument("--worker", choices=("before-acceptance", "accepted-before-id", "partial-graph", "hold", "success"), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.worker:
         if args.project is None:

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from .record_io import durable_rmdir, durable_unlink, publish_json, read_json
 from .runtime_errors import RuntimeFailure
+from .runtime_records import tracking_path
 
 
 def guard_path(project):
@@ -20,6 +21,14 @@ def blocking_reason(project):
     if os.path.lexists(guard_path(project)):
         return "command-guard-held", "the project command guard is held; no automatic stale takeover is allowed"
     return None
+
+
+def observation_generation(project):
+    """Read the retained, uniquely named submissions without reserving state."""
+    try:
+        return frozenset(path.name for path in (tracking_path(project).parent / "submissions").iterdir())
+    except FileNotFoundError:
+        return frozenset()
 
 
 def acquire_guard(project, owner):
