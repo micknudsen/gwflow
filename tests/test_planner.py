@@ -79,9 +79,13 @@ def test_runtime_preview_rejects_images_without_side_effects(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_runtime_submission_is_not_mistaken_for_a_preview(tmp_path):
+def test_missing_external_input_fails_submission_before_any_job_is_accepted(tmp_path):
     result = runtime_cli(tmp_path, "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert result.returncode == 1
-    assert json.loads(result.stdout)["outcome"] == "error"
-    assert "submission is not available" in result.stderr
-    assert list(tmp_path.iterdir()) == []
+    report = json.loads(result.stdout)
+    assert report["outcome"] == "error"
+    assert report["reason"]["code"] == "missing-external-input"
+    assert report["accepted_job_ids"] == []
+    assert "missing producerless external input" in result.stderr
+    assert not (tmp_path / ".gwflow" / "command-guard").exists()
+    assert not (tmp_path / ".gwflow" / "runtime").exists()

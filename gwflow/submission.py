@@ -6,6 +6,8 @@ import uuid
 from .coordination import acquire_guard, blocking_reason, marker_path, release_guard
 from .host_execution import prepare_attempt, scheduler_name
 from .planner import PlanError
+from .executable_graph import dependency_graph
+from .slurm_adapter import GwfSlurmAdapter
 from .record_io import durable_unlink, publish_json
 from .runtime import evaluated_preview, host_only
 from .runtime_errors import RuntimeFailure
@@ -38,15 +40,15 @@ def _observations(tracking, scheduler):
 def submit(plan, *, scheduler=None):
     """Publish intent before acceptance; keep uncertainty on interrupted work.
 
-    The test-only scheduler satisfies observe(job_ids) and submit(job). The real
-    static gwf/Slurm adapter is supplied by its own implementation ticket.
+    The scheduler satisfies observe(job_ids) and submit(job). Tests substitute
+    the external scheduler; normal commands use the maintained gwf/Slurm adapter.
     """
     host_only(plan)
     blocked = blocking_reason(plan["project"])
     if blocked:
         return _problem(plan, *blocked, blocked=True)
     if scheduler is None:
-        return _problem(plan, "submission-unavailable", "runtime submission is not available until the static scheduler adapter is installed")
+        scheduler = GwfSlurmAdapter(plan["project"])
     project = plan["project"]
     submission = uuid.uuid4().hex
     guard = None
@@ -71,17 +73,16 @@ def submit(plan, *, scheduler=None):
             return _problem(plan, report["reason"]["code"], report["diagnostic"], blocked=report["outcome"] == "blocked")
         decisions = {(comp["identity"], target["name"]): target["decision"]
                      for comp in report["computations"] for target in comp["targets"]}
+        targets, dependencies, order = dependency_graph(plan)
         intended = []
         selected = []
-        for computation in plan["computations"]:
-            for target in computation["targets"]:
-                identity, name = computation["identity"], target["name"]
-                if decisions[(identity, name)] != "execute":
-                    continue
-                attempt = f"{submission}-{len(intended)}"
-                ownership = scheduler_name(identity, name, attempt)
-                intended.append({"identity": identity, "target": name, "attempt": attempt, "ownership": ownership})
-                selected.append((computation, target))
+        for identity, name in order:
+            if decisions[(identity, name)] != "execute":
+                continue
+            attempt = f"{submission}-{len(intended)}"
+            ownership = scheduler_name(identity, name, attempt)
+            intended.append({"identity": identity, "target": name, "attempt": attempt, "ownership": ownership})
+            selected.append(targets[(identity, name)])
         intent_path = tracking_path(project).parent / "submissions" / submission / "intent.json"
         # Set the conservative failure policy before the first marker write:
         # an interrupted write may have published a visible but unsynced marker.
@@ -98,9 +99,11 @@ def submit(plan, *, scheduler=None):
             prepared.append({**item, "invocation": str(invocation),
                              "computation": computation, "definition": target})
         for job in prepared:
+            job["dependencies"] = sorted({jobs[parent] for parent in dependencies[(job["identity"], job["target"])] if decisions[parent] != "reuse"})
             job_id = scheduler.submit(job)
             association = job_association(job["identity"], job["target"], job["attempt"], job_id)
             accepted.append(job_id)
+            jobs[(job["identity"], job["target"])] = job_id
             tracking["associations"][association_key(job["identity"], job["target"])] = association
             # Retain both per-attempt history and the independent latest-job map.
             write_runtime_record(Path(job["invocation"]).parent / "job.json", association)
@@ -109,6 +112,11 @@ def submit(plan, *, scheduler=None):
         durable_unlink(marker_path(project))
         release_guard(guard, submission)
         guard = None
+        for computation in report["computations"]:
+            for target in computation["targets"]:
+                key = (computation["identity"], target["name"])
+                target["job_ids"] = [jobs[key]] if key in jobs else []
+            computation["job_ids"] = sorted({job_id for target in computation["targets"] for job_id in target["job_ids"]})
         return {"kind": "runtime-submission", "submission_revision": 1,
                 "project": project, "outcome": "submitted", "submission": submission,
                 "intent": str(intent_path), "accepted_job_ids": accepted,

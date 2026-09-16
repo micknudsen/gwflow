@@ -12,24 +12,29 @@ and [architecture](docs/architecture-proposal.md).
 
 ## Development status
 
-The Python package and plan command are usable for inspecting intended work.
-Target execution, scheduler integration, runtime reuse/recovery, image acquisition,
-and cleanup remain later-phase work. A plan or manifest never certifies completion.
+The Python package and pure plan command are usable for inspecting intended work.
+Phase 2 now includes host compute-job execution, retained evidence evaluation,
+guarded static gwf/Slurm submission, and portable end-to-end submission demos.
+Scheduler-preview integration, complete recovery/protection coverage, and live
+qualification remain in progress. Image acquisition and cleanup are later phases.
+A plan or manifest never certifies completion.
 The accepted [Phase 2 specification](https://github.com/micknudsen/gwflow/issues/29)
 and [preparation record](docs/phase2-planning.md) define the next milestone;
-its runtime commands are not yet available.
+its remaining tickets track the unfinished runtime milestone.
 
 ## Preview Phase 2 runtime work
 
 `run --dry-run` is a strictly read-only runtime preview. It emits versioned JSON
 on stdout and diagnostics on stderr; it does not create project state, attempts,
-tracking, or jobs. At this initial boundary it reports host targets as execution
-candidates with the stable `no-runtime-state` reason. Later Phase 2 slices add
-retained-evidence and scheduler evaluation behind the same command contract.
+tracking, or jobs. It evaluates retained evidence and file freshness, and blocks
+held command guards or uncertainty. Native scheduler-preview integration is the
+next Phase 2 slice; preview is an observation, not a submission reservation.
 
 ```sh
+gwflow_preview_project=$(mktemp -d)
+printf 'input\n' > "$gwflow_preview_project/reads.txt"
 conda run --prefix .venv python -m gwflow run --dry-run examples.one_file:main \
-  --project /tmp/gwflow-runtime-preview --bindings '{"source":"reads.txt"}'
+  --project "$gwflow_preview_project" --bindings '{"source":"reads.txt"}'
 ```
 
 Runtime execution is host-only in Phase 2. A runtime request containing a local
@@ -38,6 +43,12 @@ continues to inspect image declarations.
 
 Runtime declaration records are described in [runtime records](docs/runtime-records.md).
 Read-only reuse and recovery decisions are described in [runtime evaluation](docs/runtime-evaluation.md).
+For a runnable native-command demo with real local gwf/Bash and no live jobs,
+see [static Slurm submission](docs/slurm-submission.md):
+
+```sh
+conda run --prefix .venv python -m examples.static_submission_demo
+```
 
 ## Run the current test suite
 

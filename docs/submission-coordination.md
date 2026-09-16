@@ -18,9 +18,8 @@ host executor's safe attempt-specific scheduler name, not a completion claim.
 The maintained submission module takes a pure plan and a scheduler adapter at
 one internal seam. The adapter observes specified job IDs and accepts prepared
 jobs. Tests substitute that external scheduler; no public local execution
-backend is exposed. The actual static gwf/Slurm adapter and dependency lowering
-are delivered by #35. Until then ordinary `run` reports `submission-unavailable`
-without mutating project state.
+backend is exposed. Ordinary `run` now uses the maintained
+[static gwf/Slurm adapter](slurm-submission.md) and dependency lowering.
 
 ## Publication order
 
