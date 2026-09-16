@@ -2,9 +2,9 @@
 import argparse
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
+from examples.portable_slurm import PortableSlurm
 
 from examples.runtime_evaluation import prepare_fixture
 from gwflow import execution_manifest, manifest
@@ -19,6 +19,7 @@ def main(argv=None):
     if args.project:
         project.mkdir(parents=True)
     planned = prepare_fixture(project)
+    scheduler = PortableSlurm(project / "fixture-scheduler")
     identity = planned["computations"][0]["identity"]
     installed = planned["software"]
     planned["software"] = {"gwflow": "prior-compatible-release", "gwf": "prior-compatible-release"}
@@ -27,11 +28,11 @@ def main(argv=None):
     cases = []
 
     def observe(name, exit_code, executed=()):
-        result = subprocess.run([
-            sys.executable, "-m", "gwflow", "run", "examples.runtime_evaluation:main",
+        result = scheduler.command(
+            "run", "examples.runtime_evaluation:main",
             "--project", str(project), "--dry-run", "--bindings",
             '{"source":"reads.txt","other":"other.txt"}',
-        ], capture_output=True, text=True)
+        )
         report = json.loads(result.stdout)
         targets = report["computations"][0]["targets"] if report["computations"] else []
         actual = sorted(target["name"] for target in targets if target["decision"] == "execute")

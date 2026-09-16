@@ -80,8 +80,8 @@ def evaluate(plan, *, statuses=None, job_ids=None):
     """Return per-computation/target runtime decisions without changing state.
 
     Scheduler observations are explicit so callers cannot mistake missing
-    tracking for a successful query. The CLI currently supplies all `unknown`;
-    the maintained scheduler adapter supplies observations in a later slice.
+    tracking for a successful query. Native runtime commands obtain observations
+    through the maintained adapter; controlled evaluator fixtures pass them here.
     """
     statuses = {} if statuses is None else statuses
     job_ids = {} if job_ids is None else job_ids

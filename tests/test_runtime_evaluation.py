@@ -182,7 +182,7 @@ def test_reuse_explains_selected_and_historical_evidence_without_writing(tmp_pat
 def test_outputless_targets_are_never_made_reusable_by_receipts(tmp_path):
     planned = plan(load("examples.internal_graph:always"), {"source": "reads.txt"}, project=tmp_path)
     complete_plan(planned)
-    report = preview_plan(planned)["computations"][0]
+    report = preview_plan(planned, statuses={})["computations"][0]
     assert report["decision"] == "execute"
     assert report["targets"][0]["reason"]["code"] == "outputless-always-run"
 

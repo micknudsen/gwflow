@@ -20,6 +20,7 @@ main = MainPipeline("examples.static_submission", "1", uses={
     "producer": Use(producer, {"source": "reads.txt"}),
     "consumer": Use(copy_file, {"source": OutputRef("producer", "early")}),
 })
+producer_only = replace(main, uses={"producer": main.uses["producer"]})
 
 
 def failing_build(ctx):

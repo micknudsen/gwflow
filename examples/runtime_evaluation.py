@@ -4,9 +4,9 @@ import json
 import os
 from pathlib import Path
 from shlex import quote
-import subprocess
 import sys
 import tempfile
+from examples.portable_slurm import PortableSlurm
 
 from gwflow import MainPipeline, Subpipeline, Target, execution_manifest, plan
 from gwflow.runtime_records import (
@@ -71,15 +71,16 @@ def demo(argv=None):
     if args.project:
         project.mkdir(parents=True)
     planned = prepare_fixture(project)
+    scheduler = PortableSlurm(project / "fixture-scheduler")
     computation = planned["computations"][0]
     cases = []
 
     def observe(name, expected_execute=(), expected_exit=0):
-        result = subprocess.run([
-            sys.executable, "-m", "gwflow", "run", "examples.runtime_evaluation:main",
+        result = scheduler.command(
+            "run", "examples.runtime_evaluation:main",
             "--project", str(project), "--dry-run", "--bindings",
             json.dumps({"source": "reads.txt", "other": "other.txt"}),
-        ], capture_output=True, text=True)
+        )
         report = json.loads(result.stdout)
         targets = report["computations"][0]["targets"] if report["computations"] else []
         executed = sorted(target["name"] for target in targets if target["decision"] == "execute")

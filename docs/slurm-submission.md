@@ -76,5 +76,5 @@ directories are refused. No real Slurm jobs are submitted.
 
 Live qualification remains opt-in under #42. Portable behavior does not prove
 site-specific scheduler or shared-filesystem behavior. Scheduler precedence and
-preview query integration continue in #36; ordinary recovery and project-wide
+preview queries are described in [scheduler observations](scheduler-observation.md); ordinary recovery and project-wide
 active-consumer protection have their own Phase 2 tickets.
