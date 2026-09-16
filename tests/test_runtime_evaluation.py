@@ -94,7 +94,9 @@ def test_equal_future_and_timestamp_preserving_edits_ignore_receipt_mtime(tmp_pa
     source.write_text("different bytes and size")
     os.utime(source, ns=(20, 20))
     receipt = receipt_path(tmp_path, planned["computations"][0]["identity"], "a", "fixture-success")
-    os.utime(receipt, ns=(999999999999999999, 999999999999999999))
+    future = 4102444800000000000  # 2100-01-01, independent of the test runner's clock
+    os.utime(receipt, ns=(future, future))
+    stamp(planned["computations"][0]["retained_outputs"]["final"], future)
     assert preview(tmp_path)["decision"] == "reuse"
 
 
@@ -121,7 +123,7 @@ def test_whole_producer_dependencies_propagate_without_pooling_file_times(tmp_pa
     consumer = planned["main"]["occurrences"]["consumer"]["identity"]
     producer_plan = next(c for c in planned["computations"] if c["identity"] == producer)
     slow = next(t for t in producer_plan["targets"] if t["name"] == "slow")
-    stamp(slow["outputs"][0], 999999999999999999)  # unconsumed file is not a freshness input
+    stamp(slow["outputs"][0], 4102444800000000000)  # future unconsumed file is not a freshness input
     assert all(c["decision"] == "reuse" for c in preview_plan(planned)["computations"])
     for status in ("submitted", "running", "failed", "cancelled"):
         report = preview_plan(planned, statuses={(producer, "slow"): status})
