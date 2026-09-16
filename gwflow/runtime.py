@@ -8,6 +8,7 @@ from collections.abc import Mapping
 
 from .planner import PlanError
 from .runtime_records import read_execution_manifest, require_consistent_definition
+from .evaluator import evaluate
 
 
 RUNTIME_PREVIEW_REVISION = 1
@@ -29,26 +30,26 @@ def host_only(plan: Mapping) -> None:
 def preview(plan: Mapping) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
+    evaluated = {item["identity"]: item for item in evaluate(plan)}
     computations = []
     for computation in plan["computations"]:
+        decision = evaluated[computation["identity"]]
         saved = read_execution_manifest(plan["project"], computation["identity"])
-        if saved is not None:
-            require_consistent_definition(saved, computation)
+        no_runtime_state = saved is None
         targets = [
             {
-                "name": target["name"],
-                "decision": "execute",
-                "reason": {"code": "no-runtime-state", "message": "no retained runtime state has been evaluated"},
+                "name": target["name"], "decision": target["decision"],
+                "reason": {"code": "no-runtime-state" if no_runtime_state else target["reason"], "message": "no retained runtime state has been evaluated" if no_runtime_state else target["reason"].replace("-", " ")},
                 "evidence": [],
                 "job_ids": [],
             }
-            for target in computation["targets"]
+            for target in decision["targets"]
         ]
         computations.append(
             {
                 "identity": computation["identity"],
-                "decision": "execute",
-                "reason": {"code": "no-runtime-state", "message": "no retained runtime state has been evaluated"},
+                "decision": decision["decision"],
+                "reason": {"code": "no-runtime-state" if no_runtime_state else decision["reason"], "message": "no retained runtime state has been evaluated" if no_runtime_state else decision["reason"].replace("-", " ")},
                 "evidence": [],
                 "job_ids": [],
                 "targets": targets,
