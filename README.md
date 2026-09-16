@@ -58,6 +58,13 @@ query-failure diagnostics, see [scheduler observations](docs/scheduler-observati
 conda run --prefix .venv python -m examples.scheduler_attachment_demo
 ```
 
+For actual execution, reuse after fixture intermediate removal, and selective
+retry, see [runtime recovery](docs/runtime-recovery.md):
+
+```sh
+conda run --prefix .venv python -m examples.runtime_recovery_demo
+```
+
 ## Run the current test suite
 
 Create an isolated Conda environment from the repository root:
