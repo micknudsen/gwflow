@@ -121,7 +121,8 @@ def complete_plan(planned):
             write_runtime_record(receipt_path(project, identity, target["name"], "one"), success_receipt(identity, target["name"], "one", [{"path": path, "mtime_ns": 100} for path in target["outputs"]]))
 
 
-def test_whole_producer_dependencies_propagate_without_pooling_file_times(tmp_path):
+def test_whole_producer_dependencies_propagate_without_pooling_file_times(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "no-scheduler"))
     planned = plan(load("examples.whole_producer:main"), project=tmp_path)
     complete_plan(planned)
     producer = planned["main"]["occurrences"]["producer"]["identity"]
@@ -129,7 +130,10 @@ def test_whole_producer_dependencies_propagate_without_pooling_file_times(tmp_pa
     producer_plan = next(c for c in planned["computations"] if c["identity"] == producer)
     slow = next(t for t in producer_plan["targets"] if t["name"] == "slow")
     stamp(slow["outputs"][0], 4102444800000000000)  # future unconsumed file is not a freshness input
-    assert all(c["decision"] == "reuse" for c in preview_plan(planned)["computations"])
+    observed = preview_plan(planned, statuses={})
+    assert observed["outcome"] == "ready", observed
+    assert len(observed["computations"]) == 2
+    assert all(c["decision"] == "reuse" for c in observed["computations"])
     for status in ("submitted", "running", "failed", "cancelled"):
         report = preview_plan(planned, statuses={(producer, "slow"): status})
         assert next(c for c in report["computations"] if c["identity"] == consumer)["decision"] == "execute"
@@ -201,16 +205,23 @@ def test_new_current_attempt_is_not_certified_by_a_late_historical_receipt(tmp_p
     assert decisions(report) == {"a": "reuse", "b": "reuse", "c": "reuse", "d": "reuse", "e": "execute"}
 
 
-def test_main_only_change_preserves_reuse_but_upstream_identity_change_does_not(tmp_path):
+def test_main_only_change_preserves_reuse_but_upstream_identity_change_does_not(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path / "no-scheduler"))
     from dataclasses import replace
     definition = load("examples.connections:main")
     planned = plan(definition, project=tmp_path)
     complete_plan(planned)
     main_changed = plan(replace(definition, version="main-only-revision"), project=tmp_path)
-    assert all(c["decision"] == "reuse" for c in preview_plan(main_changed)["computations"])
+    observed = preview_plan(main_changed, statuses={})
+    assert observed["outcome"] == "ready", observed
+    assert len(observed["computations"]) == 4
+    assert all(c["decision"] == "reuse" for c in observed["computations"])
     upstream_changed = plan(load("examples.connections:revised"), project=tmp_path)
     independent = upstream_changed["main"]["occurrences"]["independent"]["identity"]
-    for computation in preview_plan(upstream_changed)["computations"]:
+    observed = preview_plan(upstream_changed, statuses={})
+    assert observed["outcome"] == "ready", observed
+    assert len(observed["computations"]) == 4
+    for computation in observed["computations"]:
         assert computation["decision"] == ("reuse" if computation["identity"] == independent else "execute")
 
 
