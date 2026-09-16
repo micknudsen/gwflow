@@ -27,6 +27,9 @@ the sandbox in 10.98 seconds using
 `conda run --prefix .venv python -m pytest -q experiments/phase0/test_execution_reuse.py experiments/phase0/test_target_execution.py::test_stock_runtime_does_not_check_declared_outputs`.
 The discrepancy was not reproduced outside the sandbox; its precise cause has
 not been established. This was a focused rerun, not a new full-suite pass.
+A subsequent full run of the required portable command outside the sandbox,
+during [documentation PR #30](https://github.com/micknudsen/gwflow/pull/30)
+preparation, passed all **222 tests in 115.28 seconds**.
 These observations do not change the accepted
 semantics or retroactively change the historical Phase 0 result.
 
