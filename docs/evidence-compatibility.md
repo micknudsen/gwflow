@@ -46,8 +46,12 @@ outside the requested composition. Merely omitting reused targets from a new
 executable graph must not remove their tracking. Replacing an association is a
 submission operation after active-job checks, never a reader's repair action.
 
-A fresh project without retained runtime state needs no tracking file. Once
-retained runtime state exists, absent tracking cannot mean "no jobs". An explicit
+A fresh project without retained runtime state or owned computation locations
+needs no tracking file. Once retained runtime state or canonical owned work/result
+slots exist, absent tracking cannot mean "no jobs", even if the entire runtime
+metadata directory was lost. These locations only signal uncertainty; they do
+not reconstruct associations or success. Unrelated user directories do not
+match the reserved two-hex/64-hex owned-slot layout. An explicit
 valid empty association set represents an initialized project with no accepted
 jobs; it cannot cover retained attempt history. An unrecognized retained runtime
 namespace also blocks rather than silently ignoring possible authority from a

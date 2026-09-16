@@ -226,3 +226,26 @@ def test_unreadable_retained_history_cannot_be_mistaken_for_no_history(tmp_path,
     assert report["outcome"] == "blocked"
     assert report["computations"] == []
     assert "unreadable retained history" in report["diagnostic"]
+
+
+@pytest.mark.parametrize("surviving", ["work", "results"])
+def test_losing_entire_runtime_metadata_still_blocks_with_owned_locations(tmp_path, surviving):
+    prepare_fixture(tmp_path)
+    (tmp_path / ".gwflow").rename(tmp_path / "metadata-removed-for-fixture")
+    other = "results" if surviving == "work" else "work"
+    (tmp_path / other).rename(tmp_path / f"{other}-removed-for-fixture")
+    result = runtime_cli(tmp_path, "--dry-run", "examples.runtime_evaluation:main", "--bindings", '{"source":"reads.txt","other":"other.txt"}')
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    assert report["outcome"] == "blocked"
+    assert report["computations"] == []
+    assert "tracking" in result.stderr
+
+
+def test_unrelated_user_directories_do_not_make_a_fresh_project_uncertain(tmp_path):
+    (tmp_path / "work" / "notes").mkdir(parents=True)
+    (tmp_path / "results" / "reports").mkdir(parents=True)
+    (tmp_path / "reads.txt").write_text("source")
+    result = runtime_cli(tmp_path, "--dry-run", "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / ".gwflow").exists()

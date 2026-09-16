@@ -344,18 +344,33 @@ def _retained_target_directories(project):
             children[:] = []
 
 
+def _has_owned_locations(project):
+    # Surviving owned slots signal lost authority, never successful execution.
+    # Other user work/results directories do not match this reserved layout.
+    for role in ("work", "results"):
+        root = Path(project) / role
+        if not root.exists():
+            continue
+        for prefix in root.iterdir():
+            if re.fullmatch(r"[0-9a-f]{2}", prefix.name):
+                for slot in prefix.iterdir():
+                    if re.fullmatch(r"[0-9a-f]{64}", slot.name) and slot.name.startswith(prefix.name):
+                        return True
+    return False
+
+
 def read_tracking(project):
     path = tracking_path(project)
     try:
+        if not path.exists():
+            if path.parent.parent.exists() or _has_owned_locations(project):
+                raise UnsupportedTracking("runtime record: authoritative job tracking is missing from a retained runtime or owned computation location; manual recovery is required")
+            return None
         record = read_json(path)
         validate_tracking(record)
         if any(entry.name != path.parent.name for entry in path.parent.parent.iterdir()):
             raise UnsupportedTracking("runtime record: unsupported retained runtime namespace; authoritative tracking cannot be established")
         _require_tracked_history(project, record)
-    except FileNotFoundError:
-        if path.parent.parent.exists():
-            raise UnsupportedTracking("runtime record: authoritative job tracking is missing from a retained runtime; manual recovery is required")
-        return None
     except (OSError, ValueError, PlanError) as exc:
         if isinstance(exc, UnsupportedTracking):
             raise
