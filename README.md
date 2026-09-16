@@ -37,6 +37,7 @@ or registry image is rejected before any job can be submitted; pure `plan`
 continues to inspect image declarations.
 
 Runtime declaration records are described in [runtime records](docs/runtime-records.md).
+Read-only reuse and recovery decisions are described in [runtime evaluation](docs/runtime-evaluation.md).
 
 ## Run the current test suite
 

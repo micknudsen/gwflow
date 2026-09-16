@@ -214,6 +214,44 @@ def execution_manifest_path(project, identity):
     return Path(project) / ".gwflow" / "runtime" / f"v{RUNTIME_RECORD_REVISION}" / "computations" / identity[:2] / identity / "manifest.json"
 
 
+def computation_directory(project, identity):
+    return execution_manifest_path(project, identity).parent
+
+
+def current_attempt_path(project, identity, target):
+    return computation_directory(project, identity) / "targets" / target / "current.json"
+
+
+def receipt_path(project, identity, target, attempt):
+    return computation_directory(project, identity) / "targets" / target / "attempts" / attempt / "receipt.json"
+
+
+def write_runtime_record(path, record):
+    """Atomically publish one validated retained record at its selected path."""
+    validate_runtime_record(record)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=".record-", delete=False) as handle:
+        json.dump(record, handle, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+    return path
+
+
+def read_runtime_record(path):
+    """Read and validate a required runtime record, returning ``None`` if absent."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _fail(f"cannot read {path}: {exc}")
+    validate_runtime_record(record)
+    return record
+
+
 def write_execution_manifest(project, record):
     """Atomically publish a validated declaration when submission creates it."""
     validate_execution_manifest(record)
