@@ -19,6 +19,23 @@ The accepted [Phase 2 specification](https://github.com/micknudsen/gwflow/issues
 and [preparation record](docs/phase2-planning.md) define the next milestone;
 its runtime commands are not yet available.
 
+## Preview Phase 2 runtime work
+
+`run --dry-run` is a strictly read-only runtime preview. It emits versioned JSON
+on stdout and diagnostics on stderr; it does not create project state, attempts,
+tracking, or jobs. At this initial boundary it reports host targets as execution
+candidates with the stable `no-runtime-state` reason. Later Phase 2 slices add
+retained-evidence and scheduler evaluation behind the same command contract.
+
+```sh
+conda run --prefix .venv python -m gwflow run --dry-run examples.one_file:main \
+  --project /tmp/gwflow-runtime-preview --bindings '{"source":"reads.txt"}'
+```
+
+Runtime execution is host-only in Phase 2. A runtime request containing a local
+or registry image is rejected before any job can be submitted; pure `plan`
+continues to inspect image declarations.
+
 ## Run the current test suite
 
 Create an isolated Conda environment from the repository root:

@@ -38,6 +38,10 @@ def cli(tmp_path, *args):
     return subprocess.run([sys.executable, "-m", "gwflow", "plan", *args, "--project", str(tmp_path)], text=True, capture_output=True)
 
 
+def runtime_cli(tmp_path, *args):
+    return subprocess.run([sys.executable, "-m", "gwflow", "run", *args, "--project", str(tmp_path)], text=True, capture_output=True)
+
+
 def test_command(tmp_path):
     result = cli(tmp_path, "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
     assert result.returncode == 0, result.stderr
@@ -46,3 +50,33 @@ def test_command(tmp_path):
         result = cli(tmp_path, *args)
         assert result.returncode == 2
         assert "gwflow:" in result.stderr
+
+
+def test_runtime_preview_is_read_only_and_structured(tmp_path):
+    result = runtime_cli(tmp_path, "--dry-run", "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
+    assert result.returncode == 0, result.stderr
+    preview = json.loads(result.stdout)
+    assert preview["kind"] == "runtime-preview"
+    assert preview["runtime_preview_revision"] == 1
+    computation = preview["computations"][0]
+    assert computation["decision"] == "execute"
+    assert computation["reason"]["code"] == "no-runtime-state"
+    assert computation["evidence"] == computation["job_ids"] == []
+    assert computation["targets"][0]["decision"] == "execute"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_runtime_preview_rejects_images_without_side_effects(tmp_path):
+    result = runtime_cli(tmp_path, "--dry-run", "examples.target_images:main")
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "host-only" in result.stderr
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_runtime_submission_is_not_mistaken_for_a_preview(tmp_path):
+    result = runtime_cli(tmp_path, "examples.one_file:main", "--bindings", '{"source":"reads.txt"}')
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "submission is not available" in result.stderr
+    assert list(tmp_path.iterdir()) == []
