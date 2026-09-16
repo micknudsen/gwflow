@@ -52,6 +52,10 @@ _Avoid_: Execution attempt when referring to the request for the main pipeline a
 An individual attempt to execute an internal step for a bound computation. Retrying creates another execution attempt without necessarily changing the bound computation.
 _Avoid_: Subpipeline version when referring to a retry of the same definition and inputs.
 
+**Current attempt**:
+The execution attempt currently selected for an internal step of a bound computation. Only evidence belonging to this attempt may support completion of that step.
+_Avoid_: Latest receipt when referring to which attempt is eligible to establish completion.
+
 **Result slot**:
 The current retained result location for one bound computation. Rebuilding that computation can replace its result files without preserving a historical copy.
 _Avoid_: Result history when referring to the current retained results alone.

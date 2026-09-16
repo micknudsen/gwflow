@@ -15,6 +15,9 @@ and [architecture](docs/architecture-proposal.md).
 The Python package and plan command are usable for inspecting intended work.
 Target execution, scheduler integration, runtime reuse/recovery, image acquisition,
 and cleanup remain later-phase work. A plan or manifest never certifies completion.
+The accepted [Phase 2 specification](https://github.com/micknudsen/gwflow/issues/29)
+and [preparation record](docs/phase2-planning.md) define the next milestone;
+its runtime commands are not yet available.
 
 ## Run the current test suite
 

@@ -17,4 +17,7 @@ also agree on their compiled target description. This deliberately conservative
 check can reject separately constructed wrappers that happen to compute the
 same thing; authors should export and reuse their canonical builder. Hidden
 code inspection and comparisons against historical saved definitions remain
-outside this check. Published-version immutability is still an author contract.
+outside this check. Published-version immutability is still an author contract. Phase 2 will extend
+visible consistency checking across invocations as accepted in
+[ADR 0009](0009-persisted-definition-consistency.md); that runtime extension is
+not yet implemented.
