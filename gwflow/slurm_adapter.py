@@ -12,6 +12,20 @@ from gwf.backends.slurm import SlurmOps, TARGET_DEFAULTS
 from .runtime_errors import RuntimeFailure
 
 
+def observe_tracking(tracking, scheduler):
+    """Observe every retained association, including pruned computations."""
+    associations = tracking["associations"].values() if tracking is not None else ()
+    ids = [item["job_id"] for item in associations]
+    observed = scheduler.observe(ids) if ids else {}
+    allowed = {"submitted", "running", "completed", "failed", "cancelled", "unknown"}
+    if (type(observed) is not dict or set(observed) != set(ids)
+            or any(type(value) is not str or value not in allowed for value in observed.values())):
+        raise RuntimeFailure("scheduler-query-failed", "scheduler did not return a valid observation for every tracked job")
+    statuses = {(item["identity"], item["target"]): observed[item["job_id"]] for item in associations}
+    jobs = {(item["identity"], item["target"]): item["job_id"] for item in associations}
+    return statuses, jobs
+
+
 def _options(resources):
     options = {key: value for key, value in TARGET_DEFAULTS.items() if value is not None}
     if "memory_mb" in resources:

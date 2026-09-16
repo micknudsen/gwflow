@@ -2,9 +2,11 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 import pytest
 from gwflow import PlanError, load, plan
+from examples.portable_slurm import PortableSlurm
 
 
 def test_import_plan_without_files_or_execution(tmp_path):
@@ -39,7 +41,11 @@ def cli(tmp_path, *args):
 
 
 def runtime_cli(tmp_path, *args):
-    return subprocess.run([sys.executable, "-m", "gwflow", "run", *args, "--project", str(tmp_path)], text=True, capture_output=True)
+    # Seeded evidence tests explicitly model successfully expired accounting.
+    # Never query a real cluster for their synthetic job IDs.
+    with tempfile.TemporaryDirectory(prefix="gwflow-test-scheduler-") as root:
+        scheduler = PortableSlurm(Path(root) / "scheduler")
+        return scheduler.command("run", *args, "--project", str(tmp_path))
 
 
 def test_command(tmp_path):

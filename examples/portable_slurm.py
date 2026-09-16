@@ -71,6 +71,12 @@ def command(executable):
     """Entry point used only by generated fixture executables on a private PATH."""
     state_path = Path(os.environ["GWFLOW_PORTABLE_SLURM_STATE"])
     state = json.loads(state_path.read_text())
+    if state.get("query_failure") == executable:
+        print("error: fixture scheduler unavailable", file=sys.stderr)
+        return 1
+    if executable in state.get("query_output", {}):
+        print(state["query_output"][executable], end="")
+        return 0
     if executable == "sbatch":
         script = sys.stdin.read()
         directives = {}

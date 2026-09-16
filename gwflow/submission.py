@@ -7,7 +7,7 @@ from .coordination import acquire_guard, blocking_reason, marker_path, release_g
 from .host_execution import prepare_attempt, scheduler_name
 from .planner import PlanError
 from .executable_graph import dependency_graph
-from .slurm_adapter import GwfSlurmAdapter
+from .slurm_adapter import GwfSlurmAdapter, observe_tracking
 from .record_io import durable_unlink, publish_json
 from .runtime import evaluated_preview, host_only
 from .runtime_errors import RuntimeFailure
@@ -24,17 +24,6 @@ def _problem(plan, code, message, *, blocked=False, accepted=(), intent=None):
             "project": plan["project"], "outcome": "blocked" if blocked else "error",
             "reason": {"code": code, "message": message}, "diagnostic": message,
             "computations": [], "accepted_job_ids": list(accepted), "intent": str(intent) if intent else None}
-
-
-def _observations(tracking, scheduler):
-    associations = tracking["associations"].values()
-    ids = [item["job_id"] for item in associations]
-    observed = scheduler.observe(ids) if ids else {}
-    if type(observed) is not dict or set(observed) != set(ids):
-        raise RuntimeFailure("scheduler-query-failed", "scheduler did not return an observation for every tracked job")
-    statuses = {(item["identity"], item["target"]): observed[item["job_id"]] for item in associations}
-    jobs = {(item["identity"], item["target"]): item["job_id"] for item in associations}
-    return statuses, jobs
 
 
 def submit(plan, *, scheduler=None):
@@ -65,7 +54,7 @@ def submit(plan, *, scheduler=None):
             return _problem(plan, "submission-uncertain", "retained submission marker requires manual recovery", blocked=True)
         tracking = read_tracking(project)
         tracking = job_tracking() if tracking is None else tracking
-        statuses, jobs = _observations(tracking, scheduler)
+        statuses, jobs = observe_tracking(tracking, scheduler)
         report = evaluated_preview(plan, statuses=statuses, job_ids=jobs)
         if report["outcome"] != "ready":
             release_guard(guard, submission)

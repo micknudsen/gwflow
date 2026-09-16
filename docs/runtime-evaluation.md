@@ -37,11 +37,12 @@ the producer's unconsumed files to freshness comparisons. A successfully queried
 `unknown`/expired job state permits evidence/freshness fallback, not assumed
 success. Query errors must never be converted to `unknown`.
 
-The gwf/Slurm adapter that obtains observations and enforces dependencies is
-delivered separately in #35/#36. Until then the CLI does not query scheduler
-history; this ticket's scheduler tests supply controlled observations at the
-shared evaluator seam. Tracking-loss compatibility/uncertainty is completed in
-#43, not inferred from receipts here.
+Native preview and submission share the maintained gwf/Slurm observation adapter;
+see [scheduler observations](scheduler-observation.md). Missing or incompatible
+authoritative tracking blocks both commands, as described in
+[evidence compatibility](evidence-compatibility.md). Completion receipts never
+reconstruct missing job associations. Direct evaluator fixtures may still supply
+explicit controlled statuses; native commands always query retained job IDs.
 
 ## Preview reasons and evidence
 
@@ -62,7 +63,7 @@ humans. Each target and computation includes `evidence` and `job_ids` arrays.
 | `submitted`, `running`, `failed`, `cancelled` | Scheduler precedence determines the target decision. |
 | `active-target` | The computation has active work and needs no new execution. |
 | `missing-external-input` | Producerless external input is absent; runtime error. |
-| `filesystem-error`, `invalid-scheduler-observation` | Runtime observation failed. |
+| `filesystem-error`, `invalid-scheduler-observation`, `scheduler-query-failed` | Runtime observation failed. |
 
 Evidence entries identify an execution manifest, current-attempt selection, or
 selected success receipt by `kind` and `path` (with `attempt` for the latter two).
@@ -81,7 +82,8 @@ conda run --prefix .venv python -m examples.runtime_evaluation
 ```
 
 It creates a unique temporary project and explicitly seeds controlled evidence
-fixtures; it executes no payload or scheduler job and claims no live execution.
+fixtures; private scheduler executables report successfully expired history.
+It executes no payload or scheduler job and claims no live execution.
 Every observed case invokes the maintained `run --dry-run` command. It reports
 and checks, in order: completed reuse; only `a,b,e` stale; reuse after intermediate
 removal; all five targets regenerated after indispensable receipt loss following

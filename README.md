@@ -14,8 +14,8 @@ and [architecture](docs/architecture-proposal.md).
 
 The Python package and pure plan command are usable for inspecting intended work.
 Phase 2 now includes host compute-job execution, retained evidence evaluation,
-guarded static gwf/Slurm submission, and portable end-to-end submission demos.
-Scheduler-preview integration, complete recovery/protection coverage, and live
+guarded static gwf/Slurm submission, scheduler-aware previews and active-work
+attachment, and portable end-to-end submission demos. Complete recovery/protection coverage and live
 qualification remain in progress. Image acquisition and cleanup are later phases.
 A plan or manifest never certifies completion.
 The accepted [Phase 2 specification](https://github.com/micknudsen/gwflow/issues/29)
@@ -26,9 +26,10 @@ its remaining tickets track the unfinished runtime milestone.
 
 `run --dry-run` is a strictly read-only runtime preview. It emits versioned JSON
 on stdout and diagnostics on stderr; it does not create project state, attempts,
-tracking, or jobs. It evaluates retained evidence and file freshness, and blocks
-held command guards or uncertainty. Native scheduler-preview integration is the
-next Phase 2 slice; preview is an observation, not a submission reservation.
+tracking, or jobs. It evaluates retained evidence, file freshness, and successfully
+queried scheduler observations, and blocks held command guards or uncertainty.
+Preview is an observation, not a submission reservation. Pure `plan` does not
+query files or the scheduler.
 
 ```sh
 gwflow_preview_project=$(mktemp -d)
@@ -48,6 +49,13 @@ see [static Slurm submission](docs/slurm-submission.md):
 
 ```sh
 conda run --prefix .venv python -m examples.static_submission_demo
+```
+
+For sequential active-job attachment, expired-history reuse, retained logs, and
+query-failure diagnostics, see [scheduler observations](docs/scheduler-observation.md):
+
+```sh
+conda run --prefix .venv python -m examples.scheduler_attachment_demo
 ```
 
 ## Run the current test suite

@@ -28,7 +28,7 @@ def main(argv=None, *, scheduler=None):
         if args.command == "plan" and args.format == "execution-manifests":
             result = [execution_manifest(result, c["identity"]) for c in result["computations"]]
         if args.command == "run" and args.dry_run:
-            result = preview(result)
+            result = preview(result, scheduler=scheduler)
         elif args.command == "run":
             result = submit(result, scheduler=scheduler)
     except (PlanError, json.JSONDecodeError) as exc:

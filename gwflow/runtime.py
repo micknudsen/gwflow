@@ -6,7 +6,8 @@ Submission shares its evaluation while holding the project command guard.
 from collections.abc import Mapping
 
 from .planner import PlanError
-from .runtime_records import UnsupportedTracking
+from .runtime_records import UnsupportedTracking, read_tracking
+from .slurm_adapter import GwfSlurmAdapter, observe_tracking
 from .evaluator import evaluate
 from .runtime_errors import RuntimeFailure
 from .coordination import blocking_reason, observation_generation
@@ -35,7 +36,7 @@ def _problem(plan, code, message, *, outcome="blocked"):
             "computations": []}
 
 
-def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
+def preview(plan: Mapping, *, statuses=None, job_ids=None, scheduler=None) -> dict:
     """Describe the initial runtime decision without reserving or changing state."""
     host_only(plan)
     try:
@@ -45,7 +46,7 @@ def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
             return _problem(plan, *blocked)
         failure = None
         try:
-            report = evaluated_preview(plan, statuses=statuses, job_ids=job_ids)
+            report = evaluated_preview(plan, statuses=statuses, job_ids=job_ids, scheduler=scheduler)
         except PlanError as exc:
             failure = exc
         changed = generation != observation_generation(plan["project"])
@@ -61,9 +62,12 @@ def preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
         return _problem(plan, "filesystem-error", str(exc), outcome="error")
 
 
-def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None) -> dict:
+def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None, scheduler=None) -> dict:
     """Shared evaluator report; caller must check coordination or hold the guard."""
     try:
+        if statuses is None:
+            tracking = read_tracking(plan["project"])
+            statuses, job_ids = observe_tracking(tracking, scheduler if scheduler is not None else GwfSlurmAdapter(plan["project"]))
         evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
     except UnsupportedTracking as exc:
         return _problem(plan, "untrustworthy-job-tracking", str(exc))
