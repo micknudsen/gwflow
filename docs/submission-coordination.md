@@ -42,8 +42,8 @@ accepted-before-ID-persistence, and partial-graph interruptions cannot cause an
 automatic retry. Returned IDs already known to the command appear in
 `accepted_job_ids`, even when their durable publication failed. Acceptance that
 did not return an ID remains unknown; neither the missing ID nor an empty query
-proves nonacceptance. Durable intent/ownership supports the separate manual
-recovery procedure in #39.
+proves nonacceptance. Durable intent/ownership supports the explicit
+[manual recovery procedure](manual-recovery.md).
 
 ## Command results
 

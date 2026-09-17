@@ -14,7 +14,8 @@ from .runtime_errors import RuntimeFailure
 
 def observe_tracking(tracking, scheduler):
     """Observe every retained association, including pruned computations."""
-    associations = tracking["associations"].values() if tracking is not None else ()
+    associations = [item for item in tracking["associations"].values()
+                    if item["kind"] == "job-association"] if tracking is not None else ()
     ids = [item["job_id"] for item in associations]
     observed = scheduler.observe(ids) if ids else {}
     allowed = {"submitted", "running", "completed", "failed", "cancelled", "unknown"}

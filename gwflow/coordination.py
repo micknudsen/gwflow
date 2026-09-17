@@ -16,6 +16,8 @@ def marker_path(project):
 
 def blocking_reason(project):
     # Even malformed records and dangling links preserve the uncertainty block.
+    if os.path.lexists(Path(project) / ".gwflow" / "recovery-guard"):
+        return "recovery-guard-held", "manual recovery is in progress; no automatic stale takeover is allowed"
     if os.path.lexists(marker_path(project)):
         return "submission-uncertain", "a retained submission marker requires explicit manual recovery"
     if os.path.lexists(guard_path(project)):

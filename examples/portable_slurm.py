@@ -78,6 +78,9 @@ def command(executable):
         print(state["query_output"][executable], end="")
         return 0
     if executable == "sbatch":
+        if state.get("reject_before_accept_at") == len(state["jobs"]) + 1:
+            print("error: fixture rejected request before acceptance", file=sys.stderr)
+            return 1
         script = sys.stdin.read()
         directives = {}
         for line in script.splitlines():
@@ -105,7 +108,20 @@ def command(executable):
         temporary = state_path.with_suffix(".pending")
         temporary.write_text(json.dumps(state))
         os.replace(temporary, state_path)
+        if state.get("lose_reply_at") == len(state["jobs"]):
+            print("error: fixture lost acceptance reply", file=sys.stderr)
+            return 1
         print(state.get("sbatch_reply", job_id + state.get("sbatch_reply_suffix", "")))
+    elif "--name" in sys.argv:
+        names = sys.argv[sys.argv.index("--name") + 1].split(",")
+        states = {"submitted": "PENDING", "running": "RUNNING", "completed": "COMPLETED",
+                  "failed": "FAILED", "cancelled": "CANCELLED"}
+        for job_id, job in state["jobs"].items():
+            if job["name"] not in names or job["state"] == "unknown":
+                continue
+            if executable == "squeue" and job["state"] not in {"submitted", "running"}:
+                continue
+            print(f"{job_id}|{job['name']}|{states.get(job['state'], job['state'])}")
     elif executable == "squeue":
         for job_id, job in state["jobs"].items():
             if job["state"] in {"submitted", "running"}:

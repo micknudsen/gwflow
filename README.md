@@ -65,6 +65,13 @@ retry, see [runtime recovery](docs/runtime-recovery.md):
 conda run --prefix .venv python -m examples.runtime_recovery_demo
 ```
 
+For uncertain acceptance, use the explicit [manual recovery procedure](docs/manual-recovery.md).
+Its portable demo checks ownership, quiescence, association repair, and safe retry:
+
+```sh
+conda run --prefix .venv python -m examples.manual_recovery_demo
+```
+
 ## Run the current test suite
 
 Create an isolated Conda environment from the repository root:
