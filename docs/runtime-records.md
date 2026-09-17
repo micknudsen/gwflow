@@ -86,7 +86,15 @@ and supports long or Unicode names without changing computation identities.
 Submission publishes records in a later Phase 2 slice. A missing record is not a
 version violation and remains an ordinary runtime-recovery condition.
 
-## Demo
+## Manual nonacceptance records
+
+Manual recovery can also publish revision-1 `unsubmitted-attempt` entries in the
+authoritative tracking map. They record identity, target, attempt, and a recovery
+audit token after affirmative operator evidence of nonacceptance. They carry no
+job ID, require an absent current selection, and cannot establish completion.
+See [manual recovery](manual-recovery.md) for the audit and publication protocol.
+
+## Demo commands
 
 Run the complete portable demo (no payload execution or scheduler submission):
 

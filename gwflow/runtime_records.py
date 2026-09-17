@@ -133,6 +133,10 @@ def validate_runtime_record(record):
         if set(record) != common | {"job_id"}:
             _fail("job association has unexpected fields")
         _token(record["job_id"], "job ID")
+    elif kind == "unsubmitted-attempt":
+        if set(record) != common | {"recovery"}:
+            _fail("unsubmitted attempt has unexpected fields")
+        _token(record["recovery"], "recovery audit token")
     elif kind == "attempt-diagnostic":
         if set(record) != common | {"stdout", "stderr"}:
             _fail("attempt diagnostic has unexpected fields")
@@ -269,8 +273,10 @@ def validate_tracking(record):
     try:
         for key, association in record["associations"].items():
             validate_runtime_record(association)
-            if association["kind"] != "job-association" or key != association_key(association["identity"], association["target"]):
+            if association["kind"] not in {"job-association", "unsubmitted-attempt"} or key != association_key(association["identity"], association["target"]):
                 _fail("misfiled job association")
+            if association["kind"] == "unsubmitted-attempt":
+                continue
             if association["job_id"] in job_ids:
                 _fail("one job ID is associated with multiple targets")
             job_ids.add(association["job_id"])
@@ -289,7 +295,7 @@ def job_tracking(associations=()):
     record = {"kind": "job-tracking", "tracking_revision": 1, "associations": {}}
     for association in associations:
         validate_runtime_record(association)
-        if association["kind"] != "job-association":
+        if association["kind"] not in {"job-association", "unsubmitted-attempt"}:
             raise UnsupportedTracking("runtime record: expected a job association")
         key = association_key(association["identity"], association["target"])
         if key in record["associations"]:
@@ -315,6 +321,8 @@ def _require_tracked_history(project, record):
         if directory / "current.json" not in selections:
             raise UnsupportedTracking(f"runtime record: retained target history has no authoritative job association: {directory}; manual recovery is required")
     for path, association in selections.items():
+        if association["kind"] == "unsubmitted-attempt" and os.path.lexists(path):
+            raise UnsupportedTracking("runtime record: an unsubmitted attempt cannot select completion evidence")
         try:
             selected = read_runtime_record(path)
         except PlanError:

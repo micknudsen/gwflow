@@ -6,6 +6,7 @@ from . import PlanError, load, manifest, plan
 from .runtime import preview
 from .runtime_records import execution_manifest
 from .submission import submit
+from .manual_recovery import recover
 
 
 def main(argv=None, *, scheduler=None):
@@ -20,9 +21,16 @@ def main(argv=None, *, scheduler=None):
         subcommand.add_argument("--resources", default="{}", help="JSON occurrence/target operational overrides")
     command.add_argument("--format", choices=("plan", "manifests", "execution-manifests"), default="plan")
     runtime.add_argument("--dry-run", action="store_true", help="emit a strictly read-only runtime preview")
+    recovery = commands.add_parser("recover", help="inspect or explicitly reconcile an uncertain submission")
+    recovery.add_argument("--project", required=True)
+    recovery.add_argument("--since", required=True, help="Slurm accounting start time preceding the affected submission")
+    recovery.add_argument("--apply", metavar="RESOLUTION_JSON", help="apply an operator-certified recovery resolution and clear the block")
     args = parser.parse_args(argv)
     try:
-        result = plan(load(args.definition), json.loads(args.bindings), project=args.project, resources=json.loads(args.resources))
+        if args.command == "recover":
+            result = recover(args.project, since=args.since, resolution=args.apply)
+        else:
+            result = plan(load(args.definition), json.loads(args.bindings), project=args.project, resources=json.loads(args.resources))
         if args.command == "plan" and args.format == "manifests":
             result = [manifest(result, c["identity"]) for c in result["computations"]]
         if args.command == "plan" and args.format == "execution-manifests":
@@ -35,7 +43,7 @@ def main(argv=None, *, scheduler=None):
         print(f"gwflow: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True))
-    if args.command == "run" and result.get("outcome") in {"blocked", "error"}:
+    if args.command in {"run", "recover"} and result.get("outcome") in {"blocked", "error"}:
         print(f"gwflow: {result['diagnostic']}", file=sys.stderr)
         return 1
     return 0
