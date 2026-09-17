@@ -110,6 +110,8 @@ existing current selection only for the verified attempt with completed schedule
 observations. Missing/malformed/mismatched selections and failed/cancelled attempt
 selections cannot establish completion; no receipt or selection is fabricated
 from result files.
+An operator resolution cannot contradict an already retained accepted job ID,
+even when that job has disappeared from scheduler queries.
 
 A certified never-accepted attempt gets an authoritative `unsubmitted-attempt`
 record in the tracking map, with revision 1, identity, target, attempt, and the

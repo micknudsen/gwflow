@@ -279,3 +279,24 @@ def test_marker_retirement_sync_failure_keeps_a_recovery_block(tmp_path, monkeyp
     blocked = scheduler.command("run", DEFINITION, "--project", str(project))
     assert blocked.returncode == 1
     assert json.loads(blocked.stdout)["reason"]["code"] == "recovery-guard-held"
+
+
+@pytest.mark.parametrize("authority", ["tracking", "per-attempt"])
+def test_nonacceptance_attestation_cannot_erase_a_known_accepted_id(tmp_path, authority):
+    project, scheduler, report, document, resolution = fixture(tmp_path)
+    scheduler.advance()
+    if authority == "per-attempt":
+        path = tracking_path(project)
+        tracking = json.loads(path.read_text())
+        tracking["associations"] = {}
+        path.write_text(json.dumps(tracking))
+    scheduler.configure(query_output={"sacct": "", "squeue": ""})
+    document["targets"] = [{"ownership": entry["ownership"], "not_accepted": {
+        "source": "scheduler-admin-audit", "reference": "incorrect audit claiming no acceptance"}}
+        for entry in document["targets"]]
+    resolution.write_text(json.dumps(document))
+    before = snapshot(project)
+    result = apply(project, scheduler, resolution)
+    assert result.returncode == 1
+    assert "contradicts a retained accepted job association" in result.stderr
+    assert snapshot(project) == before

@@ -139,6 +139,15 @@ def recover(project, *, since, resolution=None):
             known = {item["attempt"]} | ({prior["attempt"]} if prior else set())
             if selected is not None and selected.get("attempt") not in known:
                 _blocked("a current selection has ownership outside the affected intent and retained tracking")
+            try:
+                saved_job = read_runtime_record(receipt_path(project, item["identity"], item["target"], item["attempt"]).parent / "job.json")
+            except PlanError:
+                saved_job = None
+            for saved in (prior, saved_job):
+                if (saved is not None and saved["kind"] == "job-association"
+                        and all(saved[key] == item[key] for key in ("identity", "target", "attempt"))
+                        and resolved[item["ownership"]].get("job_id") != saved["job_id"]):
+                    _blocked("resolution contradicts a retained accepted job association")
         audit = uuid.uuid4().hex
         audit_path = tracking_path(project).parent / "submissions" / submission / "recoveries" / f"{audit}.json"
         publish_json(audit_path, {"kind": "manual-recovery-audit", "record_revision": 1,
