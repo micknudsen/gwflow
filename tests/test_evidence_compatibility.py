@@ -205,7 +205,20 @@ def test_incompatible_completion_evidence_preserves_known_active_work(tmp_path, 
     record = json.loads(path.read_text())
     record["record_revision"] = 999
     path.write_text(json.dumps(record))
+    before = {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+              for path in tmp_path.rglob("*") if path.is_file()}
     report = preview(planned, statuses={(identity, "b"): "running"}, job_ids={(identity, "b"): "101"})
+    assert before == {str(path): (path.read_bytes(), path.stat().st_mtime_ns)
+                      for path in tmp_path.rglob("*") if path.is_file()}
+    if kind == "manifest":
+        # Losing the whole declaration also requires recovering b's upstream
+        # target a. Protect b's active consumption before allowing that retry.
+        assert report["outcome"] == "blocked"
+        assert report["reason"]["code"] == "active-consumer-conflict"
+        assert report["computations"] == []
+        assert f"{identity}/a" in report["diagnostic"]
+        assert f"{identity}/b (job 101, running)" in report["diagnostic"]
+        return
     target = next(t for t in report["computations"][0]["targets"] if t["name"] == "b")
     assert target["decision"] == "attach"
     assert target["job_ids"] == ["101"]

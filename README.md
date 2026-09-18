@@ -15,7 +15,8 @@ and [architecture](docs/architecture-proposal.md).
 The Python package and pure plan command are usable for inspecting intended work.
 Phase 2 now includes host compute-job execution, retained evidence evaluation,
 guarded static gwf/Slurm submission, scheduler-aware previews and active-work
-attachment, and portable end-to-end submission demos. Complete recovery/protection coverage and live
+attachment, active-consumer replacement protection, and portable end-to-end
+submission demos. Complete command integration coverage and live
 qualification remain in progress. Image acquisition and cleanup are later phases.
 A plan or manifest never certifies completion.
 The accepted [Phase 2 specification](https://github.com/micknudsen/gwflow/issues/29)
@@ -56,6 +57,13 @@ query-failure diagnostics, see [scheduler observations](docs/scheduler-observati
 
 ```sh
 conda run --prefix .venv python -m examples.scheduler_attachment_demo
+```
+
+For replacement blocked by active consumers outside the requested composition,
+with unrelated work still permitted, see [active-consumer protection](docs/active-consumers.md):
+
+```sh
+conda run --prefix .venv python -m examples.active_consumer_demo
 ```
 
 For actual execution, reuse after fixture intermediate removal, and selective

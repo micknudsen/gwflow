@@ -9,6 +9,7 @@ from .planner import PlanError
 from .runtime_records import UnsupportedTracking, read_tracking
 from .slurm_adapter import GwfSlurmAdapter, observe_tracking
 from .evaluator import evaluate
+from .active_consumers import replacement_block
 from .runtime_errors import RuntimeFailure
 from .coordination import blocking_reason, observation_generation
 
@@ -69,6 +70,9 @@ def evaluated_preview(plan: Mapping, *, statuses=None, job_ids=None, scheduler=N
             tracking = read_tracking(plan["project"])
             statuses, job_ids = observe_tracking(tracking, scheduler if scheduler is not None else GwfSlurmAdapter(plan["project"]))
         evaluated = {item["identity"]: item for item in evaluate(plan, statuses=statuses, job_ids=job_ids)}
+        blocked = replacement_block(plan, evaluated, statuses, job_ids or {})
+        if blocked:
+            return _problem(plan, *blocked)
     except UnsupportedTracking as exc:
         return _problem(plan, "untrustworthy-job-tracking", str(exc))
     except RuntimeFailure as exc:

@@ -64,6 +64,8 @@ humans. Each target and computation includes `evidence` and `job_ids` arrays.
 | `active-target` | The computation has active work and needs no new execution. |
 | `missing-external-input` | Producerless external input is absent; runtime error. |
 | `filesystem-error`, `invalid-scheduler-observation`, `scheduler-query-failed` | Runtime observation failed. |
+| `active-consumer-conflict` | Replacement conflicts with an already-active consumer; blocked without decisions. |
+| `active-consumer-state-unknown` | An external active target's graph cannot establish safe replacement; blocked without decisions. |
 
 Evidence entries identify an execution manifest, current-attempt selection, or
 selected success receipt by `kind` and `path` (with `attempt` for the latter two).
@@ -72,6 +74,10 @@ File observations use `input-file`, `output-file`, or `historical-output` with
 Historical entries occur only on accepted reusable boundaries. Scheduler
 observations include `status` and the adapter-supplied `job_ids`. These are
 explanations, not a persisted reservation or a new completion-authority record.
+
+Both native preview and submission apply [active-consumer protection](active-consumers.md)
+across retained project state before allowing replacement, including consumers
+outside the requested composition.
 
 ## Demo
 

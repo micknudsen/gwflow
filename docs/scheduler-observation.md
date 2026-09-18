@@ -38,8 +38,9 @@ Per-attempt invocation records, selections' history, receipts, diagnostic metada
 and stdout/stderr logs are not expired or rewritten by pruning. Required evidence
 and the live filesystem still decide whether a completed target is reusable.
 
-Project-wide replacement protection against already-active consumers is a separate
-Phase 2 slice (#40). This interface does not cancel jobs, repair obsolete queued
+Project-wide [active-consumer protection](active-consumers.md) blocks replacement
+that conflicts with queued or running consumers, including those absent from the
+requested composition. This interface does not cancel jobs, repair obsolete queued
 dependencies, or provide automatic interruption reconciliation.
 
 ## Portable demo
